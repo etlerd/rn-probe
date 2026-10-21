@@ -2,195 +2,370 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Ransom Notes probe</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ransom Notes</title>
 <style>
-  :root { --bg:#fafaf7; --fg:#1a1a1a; --muted:#666; --card:#fff; --line:#ddd; --pass:#1b7f3b; --fail:#b3261e; --info:#8a5a00; --run:#1a5fb4; }
+  :root { --bg:#f3efe6; --fg:#1b1a17; --muted:#6b675d; --card:#fffdf7; --line:#cfc8b8; --accent:#b3261e; --ok:#1b7f3b; }
   @media (prefers-color-scheme: dark) {
-    :root { --bg:#16171a; --fg:#eee; --muted:#9a9a9a; --card:#202226; --line:#3a3c42; --pass:#5fd081; --fail:#ff8b82; --info:#e8b44f; --run:#7fb0ff; }
+    :root { --bg:#1c1b19; --fg:#f2eee4; --muted:#a39d8f; --card:#262522; --line:#47443d; --accent:#ff8b82; --ok:#5fd081; }
   }
-  * { box-sizing: border-box; }
-  body { margin:0; padding:16px; background:var(--bg); color:var(--fg); font:16px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
-  main { max-width: 680px; margin: 0 auto; }
-  h1 { font-size: 22px; margin: 0 0 4px; }
-  h2 { font-size: 16px; margin: 0 0 6px; }
-  .muted { color: var(--muted); font-size: 14px; }
-  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px; margin:12px 0; }
-  label { display:block; font-size:14px; margin:8px 0 2px; color:var(--muted); }
-  input, select { width:100%; padding:10px; font-size:16px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--fg); }
-  select { width:auto; }
-  button { padding:10px 12px; margin:6px 6px 0 0; font-size:15px; border:1px solid var(--line); border-radius:8px; background:var(--card); color:var(--fg); }
-  button:active { opacity:.7 }
-  button:disabled { opacity:.45 }
-  .pill { display:inline-block; font-size:12px; padding:2px 8px; border-radius:999px; border:1px solid currentColor; margin-right:6px; vertical-align:middle; text-transform:uppercase; letter-spacing:.04em; }
-  .pending { color: var(--muted); } .pass { color: var(--pass); } .fail { color: var(--fail); } .info { color: var(--info); } .running { color: var(--run); }
-  .how { margin: 4px 0 6px; font-size: 14px; color: var(--muted); }
-  pre.detail { white-space: pre-wrap; word-break: break-word; font: 13px/1.35 ui-monospace,Menlo,Consolas,monospace; margin: 8px 0 0; }
-  .checker { background-color:#fff; background-image: linear-gradient(45deg,#ccc 25%,transparent 25%,transparent 75%,#ccc 75%),linear-gradient(45deg,#ccc 25%,transparent 25%,transparent 75%,#ccc 75%); background-size:20px 20px; background-position:0 0,10px 10px; border:1px solid var(--line); margin-top:8px; display:none; }
-  .checker img, .checker canvas { display:block; width:100%; height:auto; }
-  #cd8 { font-size: 28px; font-weight: 700; margin-top: 8px; font-variant-numeric: tabular-nums; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:17px/1.35 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
+  [hidden] { display:none !important; }
+  button { font:inherit; color:inherit; }
+  .pad { padding: 16px; max-width: 640px; margin: 0 auto; }
+  h1 { font-size: 26px; margin: 8px 0; }
+  input[type=text] { width:100%; padding:12px; font-size:18px; border:1px solid var(--line); border-radius:10px; background:var(--card); color:var(--fg); }
+  .big { width:100%; padding:14px; font-size:19px; font-weight:700; border:0; border-radius:12px; background:var(--accent); color:#fff; margin-top:10px; }
+  .big:disabled { opacity:.4; }
+  .muted { color:var(--muted); }
+  .err { color:var(--accent); font-weight:600; }
+  #banner { position:sticky; top:0; z-index:20; background:#8a5a00; color:#fff; text-align:center; padding:6px; font-size:14px; }
+
+  /* play screen */
+  #top { position:sticky; top:0; z-index:10; background:var(--bg); border-bottom:1px solid var(--line); padding:8px 12px 8px; }
+  #banner:not([hidden]) ~ main #top { top:30px; }
+  #head { display:flex; justify-content:space-between; align-items:baseline; }
+  #roundNo { font-weight:700; color:var(--muted); }
+  #timer { font-size:34px; font-weight:800; font-variant-numeric:tabular-nums; }
+  #timer.low { color:var(--accent); }
+  #prompt { font-size:19px; font-weight:700; line-height:1.25; margin:2px 0 8px; }
+  #strip { min-height:62px; border:2px dashed var(--line); border-radius:10px; padding:6px; display:flex; flex-wrap:wrap; gap:6px; align-items:center; background:var(--card); }
+  #strip .hint { color:var(--muted); font-size:15px; padding:4px; }
+  .chip { padding:8px 10px; border-radius:4px; border:1px solid rgba(0,0,0,.35); color:#111; font-size:18px; box-shadow:0 1px 2px rgba(0,0,0,.25); }
+  .chip.sel { outline:3px solid var(--accent); outline-offset:1px; }
+  #stripCtl { display:flex; gap:8px; margin-top:6px; }
+  #stripCtl button, #tools button { padding:9px 12px; min-height:42px; border:1px solid var(--line); border-radius:8px; background:var(--card); }
+  #stripCtl button:disabled { opacity:.35; }
+  #tabs { display:flex; gap:6px; overflow-x:auto; padding:10px 12px 2px; -webkit-overflow-scrolling:touch; }
+  .tab { white-space:nowrap; padding:9px 12px; border:1px solid var(--line); border-radius:999px; background:var(--card); }
+  .tab.on { background:var(--fg); color:var(--bg); border-color:var(--fg); }
+  #tools { display:flex; gap:6px; padding:8px 12px; align-items:center; flex-wrap:wrap; }
+  #q { flex:1 1 120px; min-width:0; padding:10px; font-size:17px; border:1px solid var(--line); border-radius:8px; background:var(--card); color:var(--fg); }
+  #swapBar { margin:0 12px 6px; padding:8px; border:1px solid var(--accent); border-radius:8px; font-size:15px; }
+  #swapBar button { margin:6px 6px 0 0; padding:8px 12px; border:1px solid var(--line); border-radius:8px; background:var(--card); }
+  #tiles { display:flex; flex-wrap:wrap; gap:7px; padding:6px 12px 110px; }
+  .tile { padding:11px 13px; font-size:18px; border-radius:4px; border:1px solid rgba(0,0,0,.35); color:#111; box-shadow:0 1px 2px rgba(0,0,0,.25); }
+  .tile:active { transform:scale(.96); }
+  .tile.swap { outline:3px dashed var(--accent); outline-offset:1px; }
+  #tiles .none { color:var(--muted); padding:8px 2px; }
+  #footer { position:fixed; left:0; right:0; bottom:0; z-index:15; padding:10px 12px calc(10px + env(safe-area-inset-bottom)); background:linear-gradient(transparent, var(--bg) 35%); }
+  #footer .big { margin:0 auto; display:block; max-width:640px; }
+  .checker { background-color:#fff; background-image:linear-gradient(45deg,#ccc 25%,transparent 25%,transparent 75%,#ccc 75%),linear-gradient(45deg,#ccc 25%,transparent 25%,transparent 75%,#ccc 75%); background-size:20px 20px; background-position:0 0,10px 10px; border:1px solid var(--line); margin:12px 0; }
+  .checker img { display:block; width:100%; height:auto; }
+  .ghost { padding:11px 14px; border:1px solid var(--line); border-radius:10px; background:var(--card); margin:6px 8px 0 0; }
+
+  #modal { position:fixed; inset:0; z-index:30; background:rgba(0,0,0,.55); display:flex; align-items:center; justify-content:center; padding:20px; }
+  #modal .box { background:var(--card); border-radius:14px; padding:18px; max-width:420px; width:100%; }
+  #modal h2 { margin:0 0 6px; font-size:20px; }
+  #modal .row { display:flex; gap:10px; margin-top:14px; }
+  #modal .row button { flex:1; padding:13px; font-weight:700; border-radius:10px; border:1px solid var(--line); background:var(--card); }
+  #modal .row button.go { background:var(--accent); color:#fff; border-color:var(--accent); }
 </style>
 </head>
 <body>
+<div id="banner" hidden></div>
 <main>
-  <h1>Ransom Notes probe</h1>
-  <p class="muted">Throwaway test page. It checks whether GitHub Pages plus Apps Script can run the game. Run the tests below, then tap <b>Copy results</b> and paste them into the chat.</p>
-
-  <section class="card">
-    <label for="url">Apps Script web app URL (ends in /exec)</label>
-    <input id="url" type="url" autocapitalize="off" autocorrect="off" spellcheck="false">
-    <label for="pass">Passcode</label>
-    <input id="pass" type="text" autocapitalize="off" autocorrect="off" spellcheck="false">
-    <label for="net">Network label for this run (for example studio-wifi, cellular, eduroam)</label>
-    <input id="net" type="text" autocapitalize="off" autocorrect="off" spellcheck="false">
-    <p class="muted" id="env"></p>
-    <button id="copy">Copy results</button>
-    <button id="clear">Clear saved results</button>
+  <section id="sJoin" class="pad" hidden>
+    <h1>Ransom Notes</h1>
+    <p class="muted">Pick a name the group will recognize.</p>
+    <input id="nameIn" type="text" maxlength="16" placeholder="Your name" autocomplete="off" autocapitalize="words">
+    <p id="joinMsg" class="err"></p>
+    <button id="joinBtn" class="big">Join</button>
   </section>
 
-  <div id="tests"></div>
+  <section id="sWait" class="pad" hidden>
+    <h1 id="waitTitle"></h1>
+    <p id="waitMsg" class="muted"></p>
+    <p id="who" class="muted"></p>
+  </section>
+
+  <section id="sPlay" hidden>
+    <div id="top">
+      <div id="head"><div id="roundNo"></div><div id="timer"></div></div>
+      <div id="prompt"></div>
+      <div id="strip"></div>
+      <div id="stripCtl">
+        <button id="bLeft" aria-label="Move left">&#9664;</button>
+        <button id="bRight" aria-label="Move right">&#9654;</button>
+        <button id="bRemove">Remove</button>
+        <button id="bClear">Clear all</button>
+      </div>
+    </div>
+    <div id="tabs"></div>
+    <div id="tools">
+      <input id="q" type="search" placeholder="Search words" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+      <button id="bRandom">Random</button>
+      <button id="bAZ">A&ndash;Z</button>
+      <button id="bSwap">Swap</button>
+    </div>
+    <div id="swapBar" hidden></div>
+    <div id="tiles"></div>
+  </section>
+
+  <section id="sDone" class="pad" hidden>
+    <h1 id="doneTitle"></h1>
+    <p id="doneMsg" class="muted"></p>
+    <div class="checker" id="doneBox" hidden><img id="doneImg" alt="Your note"></div>
+    <div id="doneBtns"></div>
+  </section>
 </main>
+<div id="footer" hidden><button id="doneBtn" class="big">Done</button></div>
+<div id="modal" hidden><div class="box"><h2 id="mTitle"></h2><div id="mMsg" class="muted"></div><div class="row"><button id="mNo">Keep editing</button><button id="mYes" class="go">Submit</button></div></div></div>
 
 <script>
 'use strict';
 
-/* ------------------------------------------------------------ utilities */
+/* ================================================================ deck */
+const DECK = [["a","connector","",6],["about","connector","",2],["again","connector","",1],["all","connector","describer",2],["always","connector","",1],["am","connector","verb",1],["an","connector","",3],["and","connector","",6],["any","connector","describer",1],["are","connector","verb",3],["as","connector","",2],["at","connector","",2],["be","connector","verb",3],["because","connector","",1],["been","connector","verb",1],["but","connector","",3],["by","connector","",2],["can","connector","verb",2],["could","connector","verb",1],["did","connector","verb",1],["do","connector","verb",3],["down","connector","",1],["even","connector","describer",1],["every","connector","describer",1],["for","connector","",3],["from","connector","",2],["had","connector","verb",1],["has","connector","verb",1],["have","connector","verb",3],["he","connector","",2],["her","connector","",2],["here","connector","",1],["him","connector","",1],["his","connector","",2],["how","connector","",2],["I","connector","",5],["if","connector","",2],["in","connector","",4],["into","connector","",1],["is","connector","verb",5],["it","connector","",4],["just","connector","describer",2],["like","connector","verb",2],["me","connector","",3],["more","connector","describer",1],["most","connector","describer",1],["must","connector","verb",1],["my","connector","",4],["never","connector","",1],["no","connector","",2],["not","connector","",3],["now","connector","",1],["of","connector","",5],["off","connector","",1],["on","connector","",3],["only","connector","describer",1],["or","connector","",3],["our","connector","",2],["out","connector","",1],["over","connector","",1],["she","connector","",2],["should","connector","verb",1],["so","connector","",2],["some","connector","describer",1],["still","connector","describer",1],["than","connector","",1],["that","connector","",3],["the","connector","",8],["their","connector","",2],["them","connector","",1],["then","connector","",1],["there","connector","",1],["these","connector","",1],["they","connector","",2],["this","connector","",2],["those","connector","",1],["to","connector","",6],["too","connector","describer",1],["under","connector","",1],["up","connector","",1],["us","connector","",1],["very","connector","describer",2],["was","connector","verb",3],["we","connector","",3],["what","connector","",2],["when","connector","",2],["where","connector","",1],["which","connector","",1],["while","connector","",1],["who","connector","",1],["why","connector","",1],["will","connector","verb",2],["with","connector","",3],["would","connector","verb",1],["yes","connector","",1],["you","connector","",5],["your","connector","",3],["accordion","noun","",1],["alien","noun","",1],["ambulance","noun","",1],["anatomy","noun","",1],["antibiotic","noun","",1],["anxiety","noun","",1],["appendix","noun","",1],["armpit","noun","",1],["autopsy","noun","",1],["awe","noun","",1],["baby","noun","",1],["backpack","noun","",1],["bacon","noun","",1],["bacteria","noun","",1],["badger","noun","",1],["bagpipe","noun","",1],["balloon","noun","",1],["banana","noun","",1],["bandage","noun","",1],["bathroom","noun","",1],["beard","noun","",1],["bed","noun","",1],["bedroom","noun","",1],["beer","noun","",1],["belly","noun","",1],["belt","noun","",1],["bestie","noun","",1],["bigfoot","noun","",1],["bike","noun","",1],["biopsy","noun","",1],["birthday","noun","",1],["blanket","noun","",1],["bliss","noun","",1],["blob","noun","",1],["blood","noun","",1],["boat","noun","",1],["bone","noun","",1],["boob","noun","",1],["booger","noun","",1],["book","noun","",1],["boomer","noun","",1],["boot","noun","",1],["booty","noun","",1],["boredom","noun","",1],["boss","noun","",1],["brain","noun","",1],["bread","noun","",1],["breakfast","noun","",1],["bro","noun","",1],["broom","noun","",1],["bucket","noun","",1],["burger","noun","",1],["burrito","noun","",1],["bus","noun","",1],["butt","noun","",1],["butter","noun","",1],["cactus","noun","",1],["cadaver","noun","",1],["cake","noun","",1],["camera","noun","",1],["candy","noun","",1],["cap","noun","verb",1],["car","noun","",1],["chair","noun","",1],["chaos","noun","",1],["cheese","noun","",1],["chicken","noun","",1],["class","noun","",1],["clinic","noun","",1],["cloud","noun","",1],["coffee","noun","",1],["colon","noun","",1],["confetti","noun","",1],["cookie","noun","",1],["cop","noun","",1],["costume","noun","",1],["couch","noun","",1],["cowboy","noun","",1],["crotch","noun","",1],["crown","noun","",1],["crutch","noun","",1],["cupcake","noun","",1],["dad","noun","",1],["danger","noun","",1],["day","noun","",1],["defeat","noun","",1],["defibrillator","noun","",1],["destiny","noun","",1],["diagnosis","noun","",1],["dinner","noun","",1],["dinosaur","noun","",1],["disaster","noun","",1],["disco","noun","",1],["doctor","noun","",1],["donut","noun","",1],["door","noun","",1],["dragon","noun","",1],["drama","noun","",1],["dread","noun","verb",1],["dress","noun","verb",1],["drip","noun","",1],["drool","noun","",1],["drum","noun","verb",1],["duck","noun","verb",1],["dude","noun","",1],["egg","noun","",1],["elbow","noun","",1],["email","noun","",1],["envy","noun","verb",1],["exam","noun","",1],["eyeball","noun","",1],["fam","noun","",1],["fart","noun","",1],["fever","noun","",1],["finger","noun","",1],["flower","noun","",1],["foot","noun","",1],["freedom","noun","",1],["friend","noun","",2],["fries","noun","",1],["frog","noun","",1],["funeral","noun","",1],["garage","noun","",1],["germ","noun","",1],["glasses","noun","",1],["glee","noun","",1],["glitter","noun","",1],["goat","noun","",1],["goblin","noun","",1],["goose","noun","",1],["gossip","noun","",1],["grandma","noun","",1],["grass","noun","",1],["grief","noun","",1],["guitar","noun","",1],["hair","noun","",1],["ham","noun","",1],["hammer","noun","",1],["hamster","noun","",1],["hand","noun","",1],["hat","noun","",1],["headphones","noun","",1],["heart","noun","",1],["holiday","noun","",1],["homework","noun","",1],["hoodie","noun","",1],["hospital","noun","",1],["hotdog","noun","",1],["house","noun","",1],["ice","noun","",1],["idea","noun","",1],["jacket","noun","",1],["jelly","noun","",1],["job","noun","",1],["joke","noun","verb",1],["joy","noun","",1],["kazoo","noun","",1],["key","noun","",1],["kid","noun","",1],["kidney","noun","",1],["kitchen","noun","",1],["knee","noun","",1],["ladder","noun","",1],["lake","noun","",1],["lamp","noun","",1],["lawyer","noun","",1],["lecture","noun","",1],["letter","noun","",1],["lips","noun","",1],["liver","noun","",1],["llama","noun","",1],["luck","noun","",1],["lunch","noun","",1],["lust","noun","",1],["magic","noun","describer",1],["map","noun","verb",1],["mask","noun","verb",1],["meatball","noun","",1],["meatloaf","noun","",1],["medal","noun","",1],["mermaid","noun","",1],["mess","noun","verb",1],["microphone","noun","",1],["minute","noun","",1],["miracle","noun","",1],["mirror","noun","",1],["mistake","noun","",1],["mom","noun","",1],["money","noun","",2],["mood","noun","",1],["moon","noun","",1],["moose","noun","",1],["morning","noun","",1],["mountain","noun","",1],["movie","noun","",1],["mucus","noun","",1],["mullet","noun","",1],["music","noun","",1],["mustache","noun","",1],["mystery","noun","",1],["nacho","noun","",1],["necklace","noun","",1],["neighbor","noun","",1],["night","noun","",1],["nightmare","noun","",1],["ninja","noun","",1],["nipple","noun","",1],["noise","noun","",1],["noodle","noun","",1],["nose","noun","",1],["nugget","noun","",1],["nurse","noun","",1],["ocean","noun","",1],["office","noun","",1],["pancake","noun","",1],["panic","noun","verb",1],["pants","noun","",1],["party","noun","verb",1],["passport","noun","",1],["password","noun","",1],["pathogen","noun","",1],["patient","noun","",1],["penguin","noun","",1],["phone","noun","",1],["piano","noun","",1],["pickle","noun","",1],["pigeon","noun","",1],["pill","noun","",1],["pillow","noun","",1],["pirate","noun","",1],["pizza","noun","",1],["placebo","noun","",1],["plan","noun","verb",1],["plane","noun","",1],["platypus","noun","",1],["plunger","noun","",1],["podcast","noun","",1],["possum","noun","",1],["potato","noun","",1],["prescription","noun","",1],["pretzel","noun","",1],["pride","noun","",1],["problem","noun","",1],["question","noun","verb",1],["raccoon","noun","",1],["rage","noun","",1],["rain","noun","",1],["rash","noun","",1],["regret","noun","verb",1],["residency","noun","",1],["ring","noun","verb",1],["river","noun","",1],["rizz","noun","",1],["road","noun","",1],["robot","noun","",1],["rope","noun","",1],["rule","noun","verb",1],["rumor","noun","",1],["salad","noun","",1],["sandwich","noun","",1],["scalpel","noun","",1],["scandal","noun","",1],["school","noun","",1],["screen","noun","",1],["scrubs","noun","",1],["secret","noun","describer",1],["shame","noun","verb",1],["shark","noun","",1],["shield","noun","",1],["shoe","noun","",1],["silence","noun","",1],["skin","noun","",1],["sloth","noun","",1],["snack","noun","verb",1],["snake","noun","",1],["snot","noun","",1],["snow","noun","",1],["soap","noun","",1],["sock","noun","",1],["song","noun","",1],["soup","noun","",1],["spatula","noun","",1],["spite","noun","verb",1],["spleen","noun","",1],["squirrel","noun","",1],["star","noun","",1],["stethoscope","noun","",1],["storm","noun","",1],["story","noun","",1],["stranger","noun","",1],["street","noun","",1],["student","noun","",1],["suitcase","noun","",1],["sun","noun","",1],["surgeon","noun","",1],["sweat","noun","",1],["sword","noun","",1],["symptom","noun","",1],["syringe","noun","",1],["table","noun","",1],["taco","noun","",1],["tea","noun","",1],["teacher","noun","",1],["text","noun","verb",1],["thigh","noun","",1],["throne","noun","",1],["ticket","noun","",1],["tie","noun","verb",1],["time","noun","",1],["toe","noun","",1],["toilet","noun","",1],["tongue","noun","",1],["toot","noun","",1],["tooth","noun","",1],["toothbrush","noun","",1],["toupee","noun","",1],["towel","noun","",1],["tradition","noun","",1],["train","noun","",1],["treasure","noun","",1],["tree","noun","",1],["trombone","noun","",1],["trophy","noun","",1],["trouble","noun","",1],["truck","noun","",1],["trumpet","noun","",1],["tumor","noun","",1],["umbrella","noun","",1],["uncle","noun","",1],["underwear","noun","",1],["unicorn","noun","",1],["vacation","noun","",1],["vaccine","noun","",1],["vampire","noun","",1],["vibe","noun","verb",1],["victory","noun","",1],["video","noun","",1],["virus","noun","",1],["waffle","noun","",1],["wallet","noun","",1],["walrus","noun","",1],["water","noun","",1],["wedding","noun","",1],["wedgie","noun","",1],["weekend","noun","",1],["wig","noun","",1],["wind","noun","",1],["window","noun","",1],["wine","noun","",1],["wizard","noun","",1],["yard","noun","",1],["year","noun","",1],["zombie","noun","",1],["adore","verb","",1],["amputate","verb","",1],["amuse","verb","",1],["annoy","verb","",1],["answer","verb","noun",1],["apologize","verb","",1],["argue","verb","",1],["arrive","verb","",1],["ask","verb","",1],["ate","verb","",1],["attack","verb","",1],["bake","verb","noun",1],["beg","verb","",1],["believe","verb","",1],["bite","verb","noun",1],["blackmail","verb","",1],["blame","verb","noun",1],["bleed","verb","noun",1],["bless","verb","",1],["blink","verb","",1],["bore","verb","",1],["borrow","verb","",1],["bother","verb","",1],["bounce","verb","noun",1],["bow","verb","noun",1],["break","verb","noun",1],["bribe","verb","",1],["build","verb","",1],["burn","verb","noun",1],["burp","verb","noun",1],["buy","verb","noun",1],["came","verb","",1],["carry","verb","",1],["catch","verb","noun",1],["chase","verb","",1],["cheat","verb","noun",1],["cheer","verb","",1],["chew","verb","",1],["clap","verb","",1],["climb","verb","noun",1],["close","verb","describer",1],["confess","verb","",1],["confuse","verb","",1],["cook","verb","noun",1],["cough","verb","noun",1],["crave","verb","",1],["crawl","verb","",1],["cry","verb","noun",1],["curse","verb","noun",1],["dance","verb","noun",1],["describe","verb","",1],["destroy","verb","",1],["diagnose","verb","",1],["divorce","verb","",1],["dodge","verb","",1],["doubt","verb","",1],["drag","verb","",1],["dream","verb","noun",1],["drink","verb","noun",1],["drop","verb","noun",1],["eat","verb","noun",1],["embarrass","verb","",1],["escape","verb","",1],["examine","verb","",1],["exhale","verb","",1],["explain","verb","",1],["faint","verb","noun",1],["fall","verb","noun",1],["fear","verb","noun",1],["fight","verb","noun",1],["find","verb","",1],["fire","verb","noun",1],["fix","verb","",1],["flee","verb","",1],["flex","verb","noun",1],["fly","verb","",1],["follow","verb","",1],["forget","verb","",1],["forgive","verb","",1],["freeze","verb","",1],["frown","verb","",1],["gave","verb","",1],["ghost","verb","noun",1],["got","verb","",1],["grab","verb","noun",1],["greet","verb","",1],["hang","verb","noun",1],["hate","verb","noun",1],["haunt","verb","",1],["heal","verb","",1],["hear","verb","",1],["hide","verb","",1],["hire","verb","",1],["hit","verb","noun",1],["hope","verb","noun",1],["hug","verb","noun",1],["hurry","verb","",1],["ignore","verb","",1],["imagine","verb","",1],["impress","verb","",1],["inhale","verb","",1],["inject","verb","",1],["intubate","verb","",1],["invite","verb","",1],["itch","verb","",1],["judge","verb","noun",1],["jump","verb","noun",1],["kick","verb","noun",1],["kidnap","verb","",1],["kiss","verb","noun",1],["kneel","verb","",1],["knew","verb","",1],["know","verb","",1],["laugh","verb","noun",1],["leave","verb","",1],["lick","verb","",1],["lie","verb","noun",1],["lift","verb","noun",1],["listen","verb","",1],["lock","verb","noun",1],["look","verb","noun",1],["lose","verb","noun",1],["love","verb","noun",1],["lurk","verb","",1],["made","verb","",1],["marry","verb","",1],["meet","verb","",1],["melt","verb","",1],["need","verb","",1],["open","verb","describer",1],["operate","verb","",1],["palpate","verb","",1],["pinch","verb","noun",1],["pluck","verb","",1],["poke","verb","",1],["pour","verb","noun",1],["pout","verb","",1],["praise","verb","noun",1],["pray","verb","noun",1],["prescribe","verb","",1],["pretend","verb","",1],["promise","verb","noun",1],["protect","verb","",1],["pull","verb","noun",1],["punch","verb","noun",1],["push","verb","noun",1],["quit","verb","",1],["ran","verb","",1],["remember","verb","",1],["rescue","verb","",1],["resuscitate","verb","",1],["retire","verb","",1],["roast","verb","noun",1],["rub","verb","noun",1],["run","verb","noun",1],["said","verb","",1],["salute","verb","noun",1],["save","verb","",1],["saw","verb","",1],["scare","verb","",1],["scold","verb","noun",1],["scratch","verb","noun",1],["scream","verb","noun",1],["seduce","verb","",1],["seek","verb","",1],["sell","verb","noun",1],["shake","verb","noun",1],["shave","verb","noun",1],["shock","verb","",1],["shout","verb","noun",1],["shove","verb","",1],["simp","verb","noun",1],["sing","verb","noun",1],["slap","verb","noun",1],["slay","verb","",1],["sleep","verb","noun",1],["slide","verb","noun",1],["smell","verb","noun",1],["smile","verb","noun",1],["sneak","verb","",1],["sneeze","verb","noun",1],["sniff","verb","",1],["snore","verb","",1],["speak","verb","",1],["spill","verb","noun",1],["spin","verb","noun",1],["squeeze","verb","noun",1],["stalk","verb","",1],["stan","verb","noun",1],["stare","verb","",1],["stay","verb","noun",1],["steal","verb","noun",1],["sterilize","verb","",1],["stir","verb","noun",1],["stumble","verb","",1],["sulk","verb","",1],["surprise","verb","",1],["surrender","verb","",1],["suture","verb","",1],["swallow","verb","",1],["swim","verb","noun",1],["talk","verb","noun",1],["taste","verb","noun",1],["tell","verb","",1],["tempt","verb","",1],["terrify","verb","",1],["think","verb","",1],["threaten","verb","",1],["throw","verb","noun",1],["tickle","verb","",1],["took","verb","",1],["touch","verb","noun",1],["trip","verb","noun",1],["trust","verb","",1],["vomit","verb","",1],["vote","verb","noun",1],["wait","verb","noun",1],["walk","verb","noun",1],["want","verb","",1],["wash","verb","noun",1],["watch","verb","noun",1],["wave","verb","noun",1],["wear","verb","noun",1],["went","verb","",1],["whine","verb","",1],["whisper","verb","noun",1],["wiggle","verb","",1],["win","verb","noun",1],["wink","verb","noun",1],["wonder","verb","",1],["worship","verb","",1],["yeet","verb","",1],["yell","verb","noun",1],["absolutely","describer","",1],["acute","describer","",1],["almost","describer","",1],["alone","describer","",1],["ancient","describer","",1],["angry","describer","",1],["anxious","describer","",1],["away","describer","",1],["bald","describer","",1],["barely","describer","",1],["based","describer","",1],["basic","describer","noun",1],["beautiful","describer","",1],["benign","describer","",1],["big","describer","",2],["bitter","describer","",1],["black","describer","",1],["blue","describer","",1],["bold","describer","",1],["brave","describer","",1],["bussin","describer","",1],["chaotic","describer","",1],["cheap","describer","",1],["chronic","describer","",1],["clammy","describer","",1],["clean","describer","verb",1],["cold","describer","",1],["contagious","describer","",1],["cool","describer","verb",1],["cringe","describer","",1],["crispy","describer","",1],["crunchy","describer","",1],["definitely","describer","",1],["delulu","describer","",1],["dirty","describer","",1],["dizzy","describer","",1],["dope","describer","",1],["double","describer","verb",1],["drunk","describer","",1],["dry","describer","verb",1],["dull","describer","",1],["excited","describer","",1],["expensive","describer","",1],["extra","describer","noun",1],["fancy","describer","",1],["fast","describer","",1],["febrile","describer","",1],["feral","describer","",1],["first","describer","",1],["five","describer","",1],["forever","describer","",1],["four","describer","",1],["fresh","describer","",1],["funny","describer","",1],["furious","describer","",1],["fuzzy","describer","",1],["golden","describer","",1],["gorgeous","describer","",1],["greasy","describer","",1],["green","describer","",1],["grumpy","describer","",1],["guilty","describer","",1],["half","describer","",1],["handsome","describer","",1],["happy","describer","",1],["healthy","describer","",1],["highkey","describer","",1],["hot","describer","",1],["huge","describer","",1],["hundred","describer","",1],["hungry","describer","",1],["iconic","describer","noun",1],["jealous","describer","",1],["juicy","describer","",1],["last","describer","",1],["later","describer","",1],["lazy","describer","",1],["lit","describer","",1],["literally","describer","",1],["loud","describer","",1],["lowkey","describer","",1],["malignant","describer","",1],["maybe","describer","",1],["mid","describer","noun",1],["million","describer","",1],["moldy","describer","",1],["naked","describer","",1],["nauseous","describer","",1],["nervous","describer","",1],["new","describer","",1],["normal","describer","",1],["numb","describer","",1],["odd","describer","",1],["old","describer","",1],["one","describer","",1],["orange","describer","noun",1],["pink","describer","",1],["poor","describer","",1],["pretty","describer","",1],["probably","describer","",1],["proud","describer","",1],["purple","describer","",1],["quiet","describer","",1],["red","describer","",1],["rich","describer","",1],["rotten","describer","",1],["rough","describer","",1],["sad","describer","",1],["salty","describer","",1],["savage","describer","noun",1],["serious","describer","",1],["sharp","describer","",1],["shiny","describer","",1],["shy","describer","",1],["sick","describer","",1],["silly","describer","",1],["slippery","describer","",1],["slow","describer","",1],["small","describer","",1],["smooth","describer","",1],["sober","describer","",1],["soggy","describer","",1],["soon","describer","",1],["sour","describer","",1],["spicy","describer","",1],["spooky","describer","",1],["squishy","describer","",1],["sterile","describer","",1],["sticky","describer","",1],["stinky","describer","",1],["strange","describer","",1],["sus","describer","",1],["sweet","describer","",1],["swollen","describer","",1],["ten","describer","",1],["thirsty","describer","",1],["thousand","describer","",1],["three","describer","",1],["tiny","describer","",1],["tired","describer","",1],["together","describer","",1],["tomorrow","describer","",1],["tonight","describer","",1],["toxic","describer","noun",1],["two","describer","",1],["ugly","describer","",1],["unhinged","describer","",1],["valid","describer","",1],["warm","describer","verb",1],["weird","describer","",1],["wet","describer","",1],["white","describer","",1],["wild","describer","noun",1],["yellow","describer","",1],["yesterday","describer","",1],["young","describer","",1],["zero","describer","",1],["-ed","extra","",8],["-er","extra","",4],["-es","extra","",3],["-est","extra","",2],["-ing","extra","",8],["-ly","extra","",5],["-s","extra","",10],["-y","extra","",2],["ah","extra","",1],["ahem","extra","",1],["bet","extra","verb",1],["boo","extra","noun",1],["bruh","extra","",1],["duh","extra","",1],["eek","extra","",1],["ew","extra","",1],["haha","extra","",1],["hey","extra","",1],["hmm","extra","",1],["meh","extra","",1],["oops","extra","",1],["ouch","extra","",1],["ow","extra","",1],["psst","extra","",1],["re-","extra","",3],["sheesh","extra","",1],["ugh","extra","",1],["un-","extra","",3],["whoa","extra","",1],["wow","extra","",1],["yay","extra","",1],["yeehaw","extra","",1],["yikes","extra","",1],["yo","extra","",1]]; // [word, pos, pos2, copies], built from the word sheet
+const HAND_SIZE = 60, SWAPS_PER_ROUND = 3, POLL_MS = 2500, MAX_NOTE = 40;
+const MINS = { connector: 10, noun: 14, verb: 8, describer: 8, ending: 4 };
+const TABS = [['all', 'All'], ['noun', 'Nouns'], ['verb', 'Verbs'], ['describer', 'Describers'], ['connector', 'Connectors'], ['extra', 'Extras']];
+const PALETTE = ['#fff7c2', '#e6f0ff', '#ffe4e1', '#e8f5e0', '#f5ebdc', '#ffffff', '#ece4ff'];
+
+const TILES = {}, TILE_IDS = [], BYCAT = {};
+DECK.forEach((row, ri) => {
+  for (let c = 0; c < row[3]; c++) {
+    const id = ri + '.' + c;
+    TILES[id] = { id, word: row[0], pos: row[1], pos2: row[2] || '', row: ri };
+    TILE_IDS.push(id);
+  }
+});
+const catOf = (t) => (t.pos === 'extra' ? (/-/.test(t.word) ? 'ending' : 'interj') : t.pos);
+TILE_IDS.forEach((id) => { const c = catOf(TILES[id]); (BYCAT[c] = BYCAT[c] || []).push(id); });
+
+/* ============================================================ utilities */
 const $ = (id) => document.getElementById(id);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const store = {
   get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
-  set(k, v) { try { localStorage.setItem(k, v); return true; } catch (e) { return false; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* storage blocked */ } },
   del(k) { try { localStorage.removeItem(k); } catch (e) { /* ignore */ } },
 };
-function median(a) { if (!a.length) return NaN; const s = a.slice().sort((x, y) => x - y); const m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; }
-function pct(a, p) { if (!a.length) return NaN; const s = a.slice().sort((x, y) => x - y); return s[Math.min(s.length - 1, Math.max(0, Math.ceil((p / 100) * s.length) - 1))]; }
-const fmt = (n) => (Number.isFinite(n) ? Math.round(n) + ' ms' : 'n/a');
-const fmtAge = (sec) => (sec < 120 ? Math.round(sec) + ' s' : Math.round(sec / 60) + ' min');
-const stop = {}; // per-test stop flags
-
-/* ------------------------------------------------------ test card model */
-const ORDER = [];
-const META = {};
-let results = {};
-try { results = JSON.parse(store.get('probe_results') || '{}'); } catch (e) { results = {}; }
-
-function card(id, title, how, extraHtml) {
-  ORDER.push(id);
-  META[id] = { title };
-  const el = document.createElement('section');
-  el.className = 'card';
-  el.innerHTML =
-    '<h2><span class="pill pending" id="p' + id + '">pending</span>' + id + '. ' + title + '</h2>' +
-    '<div class="how">' + how + '</div>' +
-    '<div id="x' + id + '"></div>' +
-    '<div id="b' + id + '"></div>' +
-    (extraHtml || '') +
-    '<pre class="detail" id="d' + id + '"></pre>';
-  $('tests').appendChild(el);
+const loadJson = (k) => { try { return JSON.parse(store.get(k) || 'null'); } catch (e) { return null; } };
+function fnv(str) { let h = 0x811c9dc5; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 0x01000193); } return h >>> 0; }
+function mulberry(seed) {
+  let a = seed >>> 0;
+  return () => { a |= 0; a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
 }
-function setStatus(id, status, detail) {
-  const p = $('p' + id);
-  p.className = 'pill ' + status;
-  p.textContent = status;
-  if (detail !== undefined) $('d' + id).textContent = detail;
-  results[id] = { status, detail: $('d' + id).textContent };
-  store.set('probe_results', JSON.stringify(results));
-}
-function button(id, label, fn, opts) {
-  const b = document.createElement('button');
-  b.textContent = label;
-  b.addEventListener('click', async () => {
-    b.disabled = true;
-    try { await fn(); }
-    catch (e) { setStatus(id, 'fail', 'Error: ' + (e && e.message ? e.message : e)); }
-    finally { b.disabled = false; }
+function shuffle(arr, r) { const a = arr.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); const t = a[i]; a[i] = a[j]; a[j] = t; } return a; }
+const plain = (w) => w.toLowerCase().replace(/-/g, '');
+const cmpWord = (a, b) => { const x = plain(TILES[a].word), y = plain(TILES[b].word); return x < y ? -1 : x > y ? 1 : a < b ? -1 : a > b ? 1 : 0; };
+const randomToken = () => { try { const a = new Uint8Array(12); crypto.getRandomValues(a); return Array.from(a, (x) => x.toString(16).padStart(2, '0')).join(''); } catch (e) { return String(Math.random()).slice(2) + String(Date.now()); } };
+
+/* ============================================================== dealing */
+/** Same token and round always give the same hand, so a refresh or a sleeping phone restores it. */
+function dealHand(token, round) {
+  const r = mulberry(fnv(token + ':' + round));
+  const picked = [], taken = new Set();
+  Object.keys(MINS).forEach((c) => {
+    const pool = shuffle(BYCAT[c] || [], r);
+    for (let i = 0; i < MINS[c] && i < pool.length; i++) { picked.push(pool[i]); taken.add(pool[i]); }
   });
-  $((opts && opts.into) || 'b' + id).appendChild(b);
-  return b;
+  const rest = shuffle(TILE_IDS.filter((id) => !taken.has(id)), r);
+  for (let i = 0; picked.length < HAND_SIZE && i < rest.length; i++) picked.push(rest[i]);
+  return picked;
 }
-function manual(id) {
-  button(id, 'Mark pass', async () => setStatus(id, 'pass', ($('d' + id).textContent || '') + '\n(marked pass manually)'));
-  button(id, 'Mark fail', async () => setStatus(id, 'fail', ($('d' + id).textContent || '') + '\n(marked fail manually)'));
+/** Replacement tile for a swap: same category, a word not already in the hand when possible. */
+function swapOne(token, round, hand, id, n) {
+  const c = catOf(TILES[id]);
+  const r = mulberry(fnv(token + ':' + round + ':swap:' + n));
+  const inHand = new Set(hand);
+  const rows = new Set(hand.map((x) => TILES[x].row));
+  const pool = (BYCAT[c] || []).filter((x) => !inHand.has(x));
+  const fresh = pool.filter((x) => !rows.has(TILES[x].row));
+  const use = fresh.length ? fresh : pool;
+  return use.length ? use[Math.floor(r() * use.length)] : id;
 }
-function stopButton(id) { button(id, 'Stop', async () => { stop[id] = true; }); }
 
-/* ----------------------------------------------------------- server API */
-function cfg() { return { url: $('url').value.trim(), pass: $('pass').value.trim() }; }
+/* ================================================================ server */
+let CFG = null;
 async function api(action, params, post) {
-  const { url, pass } = cfg();
-  if (!url) throw new Error('Enter the web app URL first');
+  if (!CFG) throw new Error('no game settings');
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), 30000);
-  const t0 = performance.now();
   try {
     let res;
     if (post) {
-      res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify(Object.assign({ action, pass }, params || {})),
-        signal: ctl.signal,
-      });
+      res = await fetch(CFG.u, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(Object.assign({ action, pass: CFG.p }, params || {})), signal: ctl.signal });
     } else {
-      const u = new URL(url);
-      u.searchParams.set('action', action);
-      u.searchParams.set('pass', pass);
-      Object.keys(params || {}).forEach((k) => u.searchParams.set(k, params[k]));
+      const u = new URL(CFG.u);
+      u.searchParams.set('action', action); u.searchParams.set('pass', CFG.p);
       res = await fetch(u.toString(), { signal: ctl.signal });
     }
     const text = await res.text();
     let data;
-    try { data = JSON.parse(text); }
-    catch (e) { throw new Error('Reply was not JSON (HTTP ' + res.status + '). Start of reply: ' + text.slice(0, 100).replace(/\s+/g, ' ')); }
-    if (!data.ok) throw new Error('Server said: ' + (data.error || 'not ok'));
-    return { data, ms: performance.now() - t0 };
+    try { data = JSON.parse(text); } catch (e) { throw new Error('bad reply from server'); }
+    if (!data.ok) throw new Error(data.error || 'server error');
+    return data;
   } catch (e) {
-    if (e.name === 'AbortError') throw new Error('Timed out after 30 s');
-    if (e instanceof TypeError) throw new Error(e.message + ' (the browser may have blocked the call: cross-origin rules, a network block, or no connection)');
+    if (e.name === 'AbortError') throw new Error('timed out');
     throw e;
   } finally { clearTimeout(timer); }
 }
 
-/* ------------------------------------------------- canvas / note drawing */
-function rng(seed) {
-  let a = seed >>> 0;
-  return () => {
-    a |= 0; a = (a + 0x6D2B79F5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
+/* Clock: offset from the server, using the lowest-latency recent sample. */
+const clockSamples = [];
+let clockOffset = 0;
+function noteClock(t0, t1, serverNow) {
+  clockSamples.push({ rtt: t1 - t0, off: serverNow - (t0 + t1) / 2 });
+  if (clockSamples.length > 8) clockSamples.shift();
+  clockOffset = clockSamples.slice().sort((a, b) => a.rtt - b.rtt)[0].off;
 }
-const FONTS = [
-  { fam: 'Special Elite', spec: '32px "Special Elite"' },
-  { fam: 'Bangers', spec: '32px "Bangers"' },
-  { fam: 'Playfair Display', spec: '900 32px "Playfair Display"' },
-  { fam: 'Courier Prime', spec: '700 32px "Courier Prime"' },
-  { fam: 'Abril Fatface', spec: '32px "Abril Fatface"' },
-];
+const serverTime = () => Date.now() + clockOffset;
+
+/* ================================================================ state */
+let me = loadJson('rn_me');          // { name, token }
+let G = loadJson('rn_game');         // { round, hand, note, swapsUsed, submitted, uploaded, auto }
+let S = null;                        // latest server state
+let joined = false, submitting = false, lastBlob = null, screen = '';
+const ui = { tab: 'all', q: '', order: {}, swapMode: false, swapSel: new Set(), selNote: -1 };
+const saveG = () => store.set('rn_game', JSON.stringify(G));
+const saveMe = () => store.set('rn_me', JSON.stringify(me));
+
+function loadCfg() {
+  const m = location.hash.match(/[#&]c=([^&]+)/);
+  if (m) {
+    try {
+      const o = JSON.parse(atob(decodeURIComponent(m[1])));
+      if (o.u && o.p) store.set('rn_cfg', JSON.stringify({ u: o.u, p: o.p }));
+      if (o.u && o.p) return { u: o.u, p: o.p };
+    } catch (e) { /* fall through to stored settings */ }
+  }
+  return loadJson('rn_cfg');
+}
+
+/* =============================================================== screens */
+function show(name) {
+  if (screen === name) return;
+  screen = name;
+  ['sJoin', 'sWait', 'sPlay', 'sDone'].forEach((id) => { $(id).hidden = id !== 's' + name; });
+  $('footer').hidden = name !== 'Play';
+  window.scrollTo(0, 0);
+}
+function showWait(title, msg) {
+  $('waitTitle').textContent = title; $('waitMsg').textContent = msg;
+  $('who').textContent = me ? 'You are ' + me.name + (S ? ' (' + S.roster.length + ' in the game)' : '') : '';
+  show('Wait');
+}
+function setBanner(t) { $('banner').hidden = !t; $('banner').textContent = t; }
+function confirmDialog(title, msg, yes, no) {
+  return new Promise((res) => {
+    $('mTitle').textContent = title; $('mMsg').textContent = msg;
+    $('mYes').textContent = yes || 'OK'; $('mNo').textContent = no || 'Cancel';
+    $('modal').hidden = false;
+    const done = (v) => { $('modal').hidden = true; $('mYes').onclick = null; $('mNo').onclick = null; res(v); };
+    $('mYes').onclick = () => done(true); $('mNo').onclick = () => done(false);
+  });
+}
+
+/* ============================================================ play screen */
+function visibleIds() {
+  const inNote = new Set(G.note);
+  let ids = G.hand.filter((id) => !inNote.has(id));
+  if (ui.tab !== 'all') ids = ids.filter((id) => TILES[id].pos === ui.tab || TILES[id].pos2 === ui.tab);
+  const q = plain(ui.q.trim());
+  if (q) ids = ids.filter((id) => plain(TILES[id].word).indexOf(q) >= 0);
+  const ord = ui.order[ui.tab];
+  if (ord && ord !== 'az') {
+    const rank = new Map(ord.map((id, i) => [id, i]));
+    ids.sort((a, b) => ((rank.has(a) ? rank.get(a) : 1e6) - (rank.has(b) ? rank.get(b) : 1e6)) || cmpWord(a, b));
+  } else ids.sort(cmpWord);
+  return ids;
+}
+const tileColor = (id) => PALETTE[fnv(id) % PALETTE.length];
+function renderPlay() {
+  if (!G || !S) return;
+  const locked = S.phase !== 'playing' || serverTime() >= S.startedAt + S.durationSec * 1000;
+  $('roundNo').textContent = 'Round ' + G.round;
+  $('prompt').textContent = S.prompt;
+
+  // note strip
+  const strip = $('strip'); strip.innerHTML = '';
+  if (!G.note.length) { const h = document.createElement('span'); h.className = 'hint'; h.textContent = 'Tap words below to build your note'; strip.appendChild(h); }
+  G.note.forEach((id, i) => {
+    const b = document.createElement('button');
+    b.className = 'chip' + (i === ui.selNote ? ' sel' : ''); b.textContent = TILES[id].word; b.dataset.i = i;
+    b.style.background = tileColor(id); strip.appendChild(b);
+  });
+  const hasSel = ui.selNote >= 0 && ui.selNote < G.note.length;
+  $('bLeft').disabled = !hasSel || ui.selNote === 0;
+  $('bRight').disabled = !hasSel || ui.selNote === G.note.length - 1;
+  $('bRemove').disabled = !hasSel;
+  $('bClear').disabled = !G.note.length;
+  $('doneBtn').disabled = !G.note.length || locked;
+
+  // tabs with counts
+  const inNote = new Set(G.note);
+  const unused = G.hand.filter((id) => !inNote.has(id));
+  const tabs = $('tabs'); tabs.innerHTML = '';
+  TABS.forEach(([k, label]) => {
+    const n = k === 'all' ? unused.length : unused.filter((id) => TILES[id].pos === k || TILES[id].pos2 === k).length;
+    const b = document.createElement('button');
+    b.className = 'tab' + (ui.tab === k ? ' on' : ''); b.textContent = label + ' (' + n + ')'; b.dataset.k = k; tabs.appendChild(b);
+  });
+
+  // swap
+  const left = SWAPS_PER_ROUND - G.swapsUsed;
+  $('bSwap').textContent = 'Swap (' + left + ')';
+  $('bSwap').disabled = left <= 0 || locked;
+  const bar = $('swapBar');
+  bar.hidden = !ui.swapMode;
+  if (ui.swapMode) {
+    bar.innerHTML = '';
+    const t = document.createElement('div'); t.textContent = 'Tap up to ' + left + ' words to swap for new ones of the same kind. Selected: ' + ui.swapSel.size;
+    const go = document.createElement('button'); go.textContent = 'Swap them'; go.id = 'swapGo'; go.disabled = !ui.swapSel.size;
+    const no = document.createElement('button'); no.textContent = 'Cancel'; no.id = 'swapNo';
+    bar.appendChild(t); bar.appendChild(go); bar.appendChild(no);
+  }
+
+  // tiles
+  const box = $('tiles'); box.innerHTML = '';
+  const ids = visibleIds();
+  if (!ids.length) { const n = document.createElement('div'); n.className = 'none'; n.textContent = ui.q ? 'No words match.' : 'No words left in this tab.'; box.appendChild(n); }
+  ids.forEach((id) => {
+    const b = document.createElement('button');
+    b.className = 'tile' + (ui.swapSel.has(id) ? ' swap' : ''); b.textContent = TILES[id].word; b.dataset.id = id; b.style.background = tileColor(id); box.appendChild(b);
+  });
+}
+
+function onTileTap(id) {
+  if (ui.swapMode) {
+    const left = SWAPS_PER_ROUND - G.swapsUsed;
+    if (ui.swapSel.has(id)) ui.swapSel.delete(id); else if (ui.swapSel.size < left) ui.swapSel.add(id);
+  } else {
+    if (G.note.length >= MAX_NOTE) return;
+    G.note.push(id); ui.selNote = -1; saveG();
+  }
+  renderPlay();
+}
+function doSwap() {
+  ui.swapSel.forEach((id) => {
+    const nid = swapOne(me.token, G.round, G.hand, id, G.swapsUsed);
+    G.hand[G.hand.indexOf(id)] = nid; G.swapsUsed++;
+  });
+  ui.swapSel.clear(); ui.swapMode = false; saveG(); renderPlay();
+}
+
+/* =========================================================== note drawing */
+const FONT_FAMS = ['Special Elite', 'Bangers', 'Playfair Display', 'Courier Prime', 'Abril Fatface'];
+const FONT_SPECS = ['32px "Special Elite"', '32px "Bangers"', '900 32px "Playfair Display"', '700 32px "Courier Prime"', '32px "Abril Fatface"'];
 const FONT_CSS = 'https://fonts.googleapis.com/css2?family=Special+Elite&family=Bangers&family=Playfair+Display:wght@900&family=Courier+Prime:wght@700&family=Abril+Fatface&display=swap';
 const SCRAPS = ['#f4ecd8', '#fff3b0', '#d9e8f5', '#f7d9d9', '#e3f2d3', '#ffffff', '#f0e0c8', '#222222'];
-const WORDS = ['diagnose', 'the', 'llama', 'your', 'bedside', 'manner', 'is', 'febrile', 'and', 'vibe', 'check', 'scalpel', 'ugh', 'yeet', 'with', 'mullet', 'panic', 'of', 'a', 'goblin'];
-function sampleWords(i) { const out = []; for (let k = 0; k < 12; k++) out.push(WORDS[(i * 3 + k * 7) % WORDS.length]); return out; }
-
 let fontsPromise = null;
-function ensureFonts(force) {
-  if (force) fontsPromise = null;
+function ensureFonts() {
   if (!fontsPromise) {
     fontsPromise = (async () => {
       let link = $('gf');
       if (!link) {
-        link = document.createElement('link');
-        link.id = 'gf'; link.rel = 'stylesheet'; link.href = FONT_CSS;
-        document.head.appendChild(link);
-        await new Promise((r) => { link.onload = r; link.onerror = r; setTimeout(r, 8000); });
+        link = document.createElement('link'); link.id = 'gf'; link.rel = 'stylesheet'; link.href = FONT_CSS; document.head.appendChild(link);
+        await new Promise((r) => { link.onload = r; link.onerror = r; setTimeout(r, 6000); });
       }
       const res = {};
-      for (const f of FONTS) {
-        try {
-          const faces = await document.fonts.load(f.spec);
-          res[f.fam] = faces.length > 0 && faces.every((x) => x.status === 'loaded');
-        } catch (e) { res[f.fam] = false; }
+      for (let i = 0; i < FONT_FAMS.length; i++) {
+        try { const faces = await document.fonts.load(FONT_SPECS[i]); res[FONT_FAMS[i]] = faces.length > 0 && faces.every((x) => x.status === 'loaded'); }
+        catch (e) { res[FONT_FAMS[i]] = false; }
       }
       return res;
     })();
@@ -198,367 +373,208 @@ function ensureFonts(force) {
   return fontsPromise;
 }
 
-function drawNote(w, h, words, seed, label) {
-  const c = document.createElement('canvas');
-  c.width = w; c.height = h;
-  const g = c.getContext('2d');
-  const r = rng(seed);
-  g.clearRect(0, 0, w, h);
-  const size = Math.round(h * 0.085);
-  const padX = Math.round(size * 0.35), padY = Math.round(size * 0.25), gap = Math.round(size * 0.2), margin = Math.round(size * 0.8);
-  const items = words.map((t) => {
-    const fam = FONTS[Math.floor(r() * FONTS.length)].fam;
-    const fs = Math.round(size * (0.8 + r() * 0.5));
-    const font = fs + 'px "' + fam + '", Georgia, serif';
-    g.font = font;
-    return { t, font, fs, w: g.measureText(t).width + padX * 2, h: fs + padY * 2, rot: (r() - 0.5) * 0.14, bg: SCRAPS[Math.floor(r() * SCRAPS.length)], dy: (r() - 0.5) * size * 0.25 };
+/** Draws the note on a transparent canvas. Same tiles + seed always give the same picture. */
+function renderNote(tiles, seed, W, H) {
+  W = W || 1920; H = H || 1080;
+  const r = mulberry(seed);
+  const styles = tiles.map(() => ({ fam: Math.floor(r() * FONT_FAMS.length), sz: 0.8 + r() * 0.5, rot: (r() - 0.5) * 0.14, bg: Math.floor(r() * SCRAPS.length), dy: (r() - 0.5) * 0.25 }));
+  const canvas = document.createElement('canvas'); canvas.width = W; canvas.height = H;
+  const g = canvas.getContext('2d');
+  const isSuf = (t) => /^-/.test(t.word), isPre = (t) => /-$/.test(t.word);
+  const joinPrev = tiles.map((t, i) => i > 0 && (isSuf(t) || isPre(tiles[i - 1])));
+  const label = (i) => { let s = tiles[i].word; if (joinPrev[i]) s = s.replace(/^-/, ''); if (i < tiles.length - 1 && joinPrev[i + 1]) s = s.replace(/-$/, ''); return s; };
+
+  function layout(scale) {
+    const base = H * 0.085 * scale, padX = base * 0.35, padY = base * 0.25, gap = base * 0.2, margin = base * 0.9;
+    const items = tiles.map((t, i) => {
+      const st = styles[i], fs = Math.round(base * st.sz);
+      g.font = fs + 'px "' + FONT_FAMS[st.fam] + '", Georgia, serif';
+      const text = label(i);
+      return { i, text, fs, fam: FONT_FAMS[st.fam], w: g.measureText(text).width + padX * 2, h: fs + padY * 2, rot: joinPrev[i] ? st.rot * 0.3 : st.rot, bg: st.bg, dy: st.dy * base, join: joinPrev[i] };
+    });
+    const groups = [];
+    items.forEach((it) => { if (it.join && groups.length) groups[groups.length - 1].items.push(it); else groups.push({ items: [it] }); });
+    groups.forEach((gr) => { gr.w = gr.items.reduce((a, x) => a + x.w, 0); gr.h = Math.max.apply(null, gr.items.map((x) => x.h)); });
+    const rows = []; let cur = { groups: [], w: 0, h: 0 };
+    groups.forEach((gr) => {
+      const add = gr.w + (cur.groups.length ? gap : 0);
+      if (cur.groups.length && cur.w + add > W - 2 * margin) { rows.push(cur); cur = { groups: [], w: 0, h: 0 }; }
+      cur.w += gr.w + (cur.groups.length ? gap : 0); cur.groups.push(gr); cur.h = Math.max(cur.h, gr.h);
+    });
+    if (cur.groups.length) rows.push(cur);
+    const height = rows.reduce((a, rw) => a + rw.h, 0) + gap * Math.max(0, rows.length - 1);
+    return { rows, height, gap, margin };
+  }
+  let L = null, used = 1;
+  for (const scale of [1, 0.9, 0.8, 0.7, 0.6, 0.5]) { L = layout(scale); used = scale; if (L.height <= H - 2 * L.margin) break; }
+
+  g.clearRect(0, 0, W, H);
+  const placed = [];
+  let y = (H - L.height) / 2;
+  L.rows.forEach((row) => {
+    let x = (W - row.w) / 2;
+    row.groups.forEach((gr) => {
+      gr.items.forEach((it) => {
+        const cx = x + it.w / 2, cy = y + row.h / 2 + it.dy;
+        g.save(); g.translate(cx, cy); g.rotate(it.rot);
+        g.shadowColor = 'rgba(0,0,0,.35)'; g.shadowBlur = 6; g.shadowOffsetY = 3;
+        g.fillStyle = SCRAPS[it.bg]; g.fillRect(-it.w / 2, -it.h / 2, it.w, it.h);
+        g.shadowColor = 'transparent';
+        g.strokeStyle = 'rgba(0,0,0,.25)'; g.lineWidth = 2; g.strokeRect(-it.w / 2, -it.h / 2, it.w, it.h);
+        g.fillStyle = SCRAPS[it.bg] === '#222222' ? '#fff' : '#111';
+        g.textAlign = 'center'; g.textBaseline = 'middle';
+        g.font = it.fs + 'px "' + it.fam + '", Georgia, serif';
+        g.fillText(it.text, 0, 0);
+        g.restore();
+        placed.push({ word: tiles[it.i].word, label: it.text, font: it.fam, size: it.fs, rotation: +it.rot.toFixed(4), scrap: SCRAPS[it.bg], x: Math.round(cx), y: Math.round(cy), w: Math.round(it.w), h: Math.round(it.h) });
+        x += it.w;
+      });
+      x += L.gap;
+    });
+    y += row.h + L.gap;
   });
-  let x = margin, y = margin, rowH = 0;
-  items.forEach((it) => {
-    if (x + it.w > w - margin) { x = margin; y += rowH + gap; rowH = 0; }
-    it.x = x; it.y = y; x += it.w + gap; rowH = Math.max(rowH, it.h);
-  });
-  const offY = Math.max(0, (h - (y + rowH)) / 2 - margin / 2);
-  items.forEach((it) => {
-    g.save();
-    g.translate(it.x + it.w / 2, it.y + it.h / 2 + offY + it.dy);
-    g.rotate(it.rot);
-    g.shadowColor = 'rgba(0,0,0,.35)'; g.shadowBlur = 6; g.shadowOffsetY = 3;
-    g.fillStyle = it.bg;
-    g.fillRect(-it.w / 2, -it.h / 2, it.w, it.h);
-    g.shadowColor = 'transparent';
-    g.strokeStyle = 'rgba(0,0,0,.25)'; g.lineWidth = 2;
-    g.strokeRect(-it.w / 2, -it.h / 2, it.w, it.h);
-    g.fillStyle = it.bg === '#222222' ? '#fff' : '#111';
-    g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.font = it.font;
-    g.fillText(it.t, 0, 0);
-    g.restore();
-  });
-  if (label) { g.font = '20px sans-serif'; g.fillStyle = '#c00'; g.fillText(label, 20, h - 20); }
-  return c;
+  return { canvas, placed, scale: used };
 }
-const toBlob = (c) => new Promise((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error('canvas.toBlob returned nothing'))), 'image/png'));
-const blobToB64 = (b) => new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).split(',')[1]); fr.onerror = () => rej(new Error('FileReader failed')); fr.readAsDataURL(b); });
-let lastPngBlob = null;
+const toBlob = (c) => new Promise((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error('image creation failed'))), 'image/png'));
+const blobToB64 = (b) => new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).split(',')[1]); fr.onerror = () => rej(new Error('could not read image')); fr.readAsDataURL(b); });
 
-/* ================================================================ TESTS */
-
-/* 1. Cross-origin calls */
-card(1, 'Cross-origin calls from this page to Apps Script',
-  'One GET and one POST. Must be run from your github.io address, not from a local file.');
-button(1, 'Run test', async () => {
-  const lines = ['Page origin: ' + location.origin];
-  let ok = true;
-  try { const g = await api('ping'); lines.push('GET ok in ' + fmt(g.ms)); } catch (e) { ok = false; lines.push('GET failed: ' + e.message); }
-  try { const p = await api('ping', {}, true); lines.push('POST ok in ' + fmt(p.ms)); } catch (e) { ok = false; lines.push('POST failed: ' + e.message); }
-  const local = location.protocol === 'file:' || /^(localhost|127\.|\[::1\])/.test(location.hostname);
-  if (local) { lines.push('NOT A VALID TEST: open this page from your github.io address.'); ok = false; }
-  setStatus(1, ok ? 'pass' : 'fail', lines.join('\n'));
-});
-
-/* 2. Anyone access */
-card(2, '"Anyone" access works without a Google sign-in',
-  'On a phone using cellular data, open this page in a private tab while signed out of Google, then run test 1. If test 1 passes there, mark pass here. If the deployment menu would not offer "Anyone", mark fail.');
-manual(2);
-
-/* 3. Latency */
-card(3, 'Latency, warm and cold',
-  '20 calls, one every 15 seconds (5 minutes). Keep the screen on. Run it again after 10+ minutes idle: the first call of that run is the cold start. Pass: no errors, median under 1000 ms, slowest under 4000 ms (my thresholds).');
-button(3, 'Run 20 calls', async () => {
-  stop[3] = false;
-  const times = []; let errs = 0; const N = 20;
-  for (let i = 0; i < N && !stop[3]; i++) {
-    try { times.push((await api('ping')).ms); } catch (e) { errs++; }
-    setStatus(3, 'running', 'call ' + (i + 1) + '/' + N + '  first=' + fmt(times[0]) + '  last=' + fmt(times[times.length - 1]) + '  errors=' + errs);
-    if (i < N - 1) await sleep(15000);
+/* ================================================================ submit */
+function showDone(title, msg, canRetry) {
+  $('doneTitle').textContent = title; $('doneMsg').textContent = msg || '';
+  const btns = $('doneBtns'); btns.innerHTML = '';
+  if (lastBlob) {
+    const a = document.createElement('button'); a.className = 'ghost'; a.textContent = 'Save image';
+    a.onclick = () => { const l = document.createElement('a'); l.href = URL.createObjectURL(lastBlob); l.download = 'my-note.png'; document.body.appendChild(l); l.click(); l.remove(); };
+    btns.appendChild(a);
   }
-  const med = median(times), mx = Math.max.apply(null, times.length ? times : [NaN]);
-  const ok = errs === 0 && times.length > 0 && med < 1000 && mx < 4000;
-  setStatus(3, ok ? 'pass' : 'fail', 'calls=' + times.length + ' errors=' + errs + '\nfirst=' + fmt(times[0]) + ' median=' + fmt(med) + ' p95=' + fmt(pct(times, 95)) + ' slowest=' + fmt(mx) + (stop[3] ? '\n(stopped early)' : ''));
-});
-stopButton(3);
-
-/* 4. Polling load */
-card(4, 'Six phones polling every 2.5 seconds',
-  'Six simulated pollers in this tab. Quotas count against the Google account, so one tab exercises them. Keep the screen on. Pass: zero errors.',
-  '');
-{
-  const sel = document.createElement('select');
-  sel.id = 't4dur';
-  [['1', '1 minute'], ['5', '5 minutes'], ['10', '10 minutes']].forEach((o) => { const op = document.createElement('option'); op.value = o[0]; op.textContent = o[1]; sel.appendChild(op); });
-  sel.value = '10';
-  $('x4').appendChild(sel);
+  if (canRetry) {
+    const b = document.createElement('button'); b.className = 'ghost'; b.textContent = 'Retry upload';
+    b.onclick = () => { G.submitted = false; saveG(); submitNow(G.auto); };
+    btns.appendChild(b);
+  }
+  show('Done');
 }
-button(4, 'Run polling test', async () => {
-  stop[4] = false;
-  const mins = Number($('t4dur').value);
-  const end = Date.now() + mins * 60000;
-  let reqs = 0, errs = 0; const times = []; const msgs = new Set();
-  const poller = async () => {
-    await sleep(Math.random() * 2500);
-    while (Date.now() < end && !stop[4]) {
-      try { times.push((await api('poll')).ms); reqs++; }
-      catch (e) { reqs++; errs++; msgs.add(e.message.slice(0, 90)); }
-      await sleep(2500);
-    }
-  };
-  const ui = setInterval(() => setStatus(4, 'running', 'requests=' + reqs + ' errors=' + errs + ' median=' + fmt(median(times)) + ' slowest=' + fmt(Math.max.apply(null, times.length ? times : [NaN]))), 1000);
-  await Promise.all([0, 1, 2, 3, 4, 5].map(poller));
-  clearInterval(ui);
-  setStatus(4, errs === 0 && reqs > 0 ? 'pass' : 'fail',
-    'requests=' + reqs + ' errors=' + errs + ' median=' + fmt(median(times)) + ' p95=' + fmt(pct(times, 95)) + ' slowest=' + fmt(Math.max.apply(null, times.length ? times : [NaN])) + (msgs.size ? '\nerror messages: ' + Array.from(msgs).join(' | ') : '') + (stop[4] ? '\n(stopped early)' : ''));
-});
-stopButton(4);
-
-/* 5. Simultaneous writes */
-card(5, 'Six players joining and uploading at the same moment',
-  'Resets the test roster, joins six names at once, renders six full-size PNGs, uploads all six at once, then counts what arrived. Pass: 6 joins, 6 roster names, 6 uploads, 6 PNG files in the Drive folder.');
-button(5, 'Run test', async () => {
-  const run = String(Date.now()).slice(-9);
-  const names = [1, 2, 3, 4, 5, 6].map((i) => 'P' + i + '_' + run);
-  setStatus(5, 'running', 'resetting roster...');
-  await api('reset', {}, true);
-  setStatus(5, 'running', 'joining six players at once...');
-  const joins = await Promise.allSettled(names.map((n, i) => api('join', { name: n, token: 'tok' + i + run }, true)));
-  const joinOk = joins.filter((j) => j.status === 'fulfilled').length;
-  const st = await api('poll');
-  const roster = st.data.state.roster.map((r) => r.name);
-  const rosterHas = names.filter((n) => roster.indexOf(n) >= 0).length;
-  setStatus(5, 'running', 'rendering six PNGs...');
-  await ensureFonts();
-  const payloads = [];
-  for (let i = 0; i < 6; i++) {
-    const c = drawNote(1920, 1080, sampleWords(i), Number(run) + i, names[i]);
-    payloads.push({ name: names[i], round: 97, png: await blobToB64(await toBlob(c)), json: JSON.stringify({ probe: true, run, player: names[i] }) });
-  }
-  const kb = Math.round(payloads.reduce((a, p) => a + p.png.length, 0) / 1024);
-  setStatus(5, 'running', 'uploading six PNGs at once (' + kb + ' KB of base64 in total)...');
-  const t0 = performance.now();
-  const ups = await Promise.allSettled(payloads.map((p) => api('upload', p, true)));
-  const upMs = performance.now() - t0;
-  const upOk = ups.filter((u) => u.status === 'fulfilled').length;
-  const upErr = ups.filter((u) => u.status === 'rejected').map((u) => u.reason.message.slice(0, 80));
-  await sleep(2000);
-  const fl = await api('files', { run });
-  const pngs = fl.data.names.filter((n) => /\.png$/.test(n)).length;
-  const ok = joinOk === 6 && rosterHas === 6 && upOk === 6 && pngs === 6;
-  setStatus(5, ok ? 'pass' : 'fail',
-    'joins ok: ' + joinOk + '/6\nnames on roster: ' + rosterHas + '/6\nuploads ok: ' + upOk + '/6 in ' + fmt(upMs) + '\nPNG files found in Drive folder: ' + pngs + '/6\nrun id: ' + run + (upErr.length ? '\nupload errors: ' + upErr.join(' | ') : ''));
-});
-
-/* 6. Real PNG upload */
-card(6, 'Real-size transparent PNG upload',
-  'Draws a 1920x1080 note with a transparent background and uploads it. The preview sits on a checkerboard: the checkerboard must show through everywhere there is no paper scrap. Then confirm the saved file in Drive (best check: import it into Premiere).',
-  '<div class="checker" id="prev6"><img id="img6" alt="note preview"></div>');
-button(6, 'Draw and upload', async () => {
-  const fonts = await ensureFonts();
-  const run = String(Date.now()).slice(-9);
-  const c = drawNote(1920, 1080, sampleWords(2), Number(run), null);
-  const blob = await toBlob(c);
-  lastPngBlob = blob;
-  $('img6').src = URL.createObjectURL(blob);
-  $('prev6').style.display = 'block';
-  const b64 = await blobToB64(blob);
-  const t0 = performance.now();
-  const r = await api('upload', { name: 'T6_' + run, round: 98, png: b64, json: JSON.stringify({ probe: true }) }, true);
-  const ms = performance.now() - t0;
-  const fontsOk = Object.keys(fonts).every((k) => fonts[k]);
-  setStatus(6, 'pass', 'PNG ' + Math.round(blob.size / 1024) + ' KB, upload took ' + fmt(ms) + '\nsaved as ' + r.data.filename + ' (' + r.data.bytes + ' bytes on the server)\nserver bytes match local bytes: ' + (r.data.bytes === blob.size ? 'yes' : 'NO') + '\nfonts loaded for this drawing: ' + (fontsOk ? 'all' : 'SOME MISSING (see test 11)') + '\nStill to check by eye: transparency in the preview and in the Drive file.');
-});
-
-/* 7. Drive sync */
-card(7, 'Drive folder syncs to the editing computer',
-  'After tests 5 and 6, watch the Drive folder RansomNotesProbe on the editing computer (Drive for desktop). Note how many seconds files take to appear. Pass: under about 30 seconds, files open normally.');
-manual(7);
-
-/* 8. Clock and shared countdown */
-let offset = 0, offsetKnown = false;
-async function measureOffset() {
-  const samples = [];
-  for (let i = 0; i < 6; i++) {
-    const t0 = Date.now(); const r = await api('ping'); const t1 = Date.now();
-    samples.push({ rtt: t1 - t0, off: r.data.serverNow - (t0 + t1) / 2 });
-  }
-  samples.sort((a, b) => a.rtt - b.rtt);
-  offset = samples[0].off; offsetKnown = true;
-  return samples[0];
-}
-card(8, 'Timers agree across phones',
-  'Measure the offset between this device\'s clock and the server\'s, then run a shared 30-second countdown. On ONE device tap Start; on ALL devices (including that one) tap Follow, and compare the "corrected" numbers side by side. Pass: within about 1 second of each other.',
-  '<div id="cd8"></div>');
-button(8, 'Measure clock offset', async () => {
-  const s = await measureOffset();
-  setStatus(8, 'info', 'This device clock is off from the server by ' + Math.round(s.off) + ' ms (best round trip ' + s.rtt + ' ms).');
-});
-button(8, 'Start 30 s countdown (one device)', async () => {
-  await api('start', { durationSec: 30 }, true);
-  setStatus(8, 'info', 'Countdown started on the server. Tap Follow on every device.');
-});
-button(8, 'Follow countdown', async () => {
-  stop[8] = false;
-  if (!offsetKnown) await measureOffset();
-  let st = null, lastPoll = 0, polling = false;
-  while (!stop[8]) {
-    if (!polling && Date.now() - lastPoll > 2000) {
-      polling = true; lastPoll = Date.now();
-      api('poll').then((r) => { st = r.data.state; }).catch(() => {}).finally(() => { polling = false; });
-    }
-    if (st && st.startedAt) {
-      const corrected = st.durationSec - (Date.now() + offset - st.startedAt) / 1000;
-      const raw = st.durationSec - (Date.now() - st.startedAt) / 1000;
-      $('cd8').textContent = 'corrected ' + Math.max(0, corrected).toFixed(1) + ' s   |   raw phone clock ' + Math.max(0, raw).toFixed(1) + ' s';
-    }
-    await sleep(100);
-  }
-});
-stopButton(8);
-manual(8);
-
-/* 9. Token survives sleep */
-card(9, 'Player token survives the phone sleeping',
-  'Tap Save token. Lock the phone for 5+ minutes, use other apps, then come back to this page. The page checks the token on return. Test on iPhone Safari and on Android Chrome.');
-function checkToken(auto) {
-  const raw = store.get('probe_token');
-  const cookie = /probe_saved=1/.test(document.cookie);
-  if (raw) {
-    let rec = null; try { rec = JSON.parse(raw); } catch (e) { /* ignore */ }
-    if (!rec) return;
-    const age = (Date.now() - rec.savedAt) / 1000;
-    setStatus(9, age >= 300 ? 'pass' : 'info', 'Token ' + rec.tok + ' is still here, saved ' + fmtAge(age) + ' ago.' + (age < 300 ? '\nLock the phone for 5+ minutes, then reopen this page.' : ''));
-  } else if (cookie) {
-    setStatus(9, 'fail', 'Storage was cleared: a cookie saved at the same time survived, but the saved token did not.');
-  } else if (!auto) {
-    setStatus(9, 'info', 'No token saved yet.');
-  }
-}
-button(9, 'Save token', async () => {
-  const rec = { tok: 'tok_' + Math.random().toString(36).slice(2, 10), savedAt: Date.now() };
-  const ok = store.set('probe_token', JSON.stringify(rec));
-  try { document.cookie = 'probe_saved=1; max-age=86400; path=/; SameSite=Lax'; } catch (e) { /* ignore */ }
-  if (!ok) setStatus(9, 'fail', 'This browser refused to save anything (storage blocked).');
-  else checkToken(false);
-});
-button(9, 'Check token', async () => checkToken(false));
-
-/* 10. In-app browsers */
-card(10, 'Link opened from a text message or chat app',
-  'Send yourself this page\'s address in a text message and in Slack or email. Open it from there. Look at the browser line below: "in-app browser" means the message app\'s built-in viewer. Run test 9 there (Save token), then open the same address in the main browser and Check token. If the token is missing in one of them, guests must open the link in their main browser.');
-manual(10);
-
-/* 11. Fonts */
-card(11, 'Fonts load before drawing',
-  'Loads five Google fonts and draws a sample. Pass: all five report loaded and the sample shows five different typefaces. If the network blocks Google Fonts, this fails, and notes would be drawn in a plain fallback font.',
-  '<div class="checker" id="prev11"></div>');
-button(11, 'Load fonts and draw sample', async () => {
-  const res = await ensureFonts(true);
-  const c = document.createElement('canvas'); c.width = 900; c.height = 60 + FONTS.length * 70;
-  const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.fillStyle = '#111'; g.textBaseline = 'middle';
-  FONTS.forEach((f, i) => { g.font = '44px "' + f.fam + '", monospace'; g.fillText(f.fam + (res[f.fam] ? '' : ' (FAILED)'), 20, 50 + i * 70); });
-  const box = $('prev11'); box.innerHTML = ''; box.appendChild(c); box.style.display = 'block';
-  const ok = Object.keys(res).every((k) => res[k]);
-  setStatus(11, ok ? 'pass' : 'fail', FONTS.map((f) => f.fam + ': ' + (res[f.fam] ? 'loaded' : 'NOT loaded')).join('\n'));
-});
-
-/* 12. Save image */
-card(12, 'Save-image fallback on iPhone',
-  'Run test 6 first. Tap Download PNG. On iPhone Safari also try pressing and holding the preview image in test 6 and choosing Save to Photos. Pass: you can get the file onto the phone by at least one route.');
-button(12, 'Download PNG', async () => {
-  if (!lastPngBlob) { setStatus(12, 'info', 'Run test 6 first so there is a PNG to save.'); return; }
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(lastPngBlob); a.download = 'probe-note.png';
-  document.body.appendChild(a); a.click(); a.remove();
-  setStatus(12, 'info', 'Download triggered. Did a file or a share sheet appear? Then mark pass or fail.');
-});
-manual(12);
-
-/* 13. Sleep and wake */
-card(13, 'Phone sleeps mid-round',
-  'Set the URL and passcode, then leave this page untouched for 60 seconds (let the screen lock or switch apps), and come back. The page polls the server on return and logs it. Pass: a wake after 30+ seconds hidden, with a successful poll.');
-const wakeLog = []; let hiddenAt = null;
-document.addEventListener('visibilitychange', async () => {
-  if (document.hidden) { hiddenAt = Date.now(); return; }
-  if (!hiddenAt) return;
-  const gap = (Date.now() - hiddenAt) / 1000; hiddenAt = null;
-  let res;
-  if (!cfg().url) res = '(no URL set, no poll made)';
-  else { try { res = 'poll ok in ' + fmt((await api('poll')).ms); } catch (e) { res = 'poll FAILED: ' + e.message; } }
-  wakeLog.push('hidden ' + Math.round(gap) + ' s, then ' + res);
-  const goodWake = wakeLog.some((l) => /^hidden (\d+) s, then poll ok/.test(l) && Number(l.match(/^hidden (\d+)/)[1]) >= 30);
-  const failed = wakeLog.some((l) => /FAILED/.test(l));
-  setStatus(13, goodWake ? 'pass' : failed ? 'fail' : 'info', wakeLog.join('\n'));
-  if (document.hidden === false) checkToken(true);
-});
-button(13, 'Try screen wake lock', async () => {
-  if (!('wakeLock' in navigator)) { setStatus(13, 'info', ($('d13').textContent ? $('d13').textContent + '\n' : '') + 'Screen Wake Lock is not supported in this browser.'); return; }
+async function submitNow(auto) {
+  if (submitting || !G || G.submitted || !G.note.length) return;
+  submitting = true; G.auto = !!auto; const round = G.round, prompt = S ? S.prompt : '';
+  showDone('Sending your note…', '');
   try {
-    const lock = await navigator.wakeLock.request('screen');
-    setStatus(13, 'info', ($('d13').textContent ? $('d13').textContent + '\n' : '') + 'Screen Wake Lock granted (screen should now stay on while this page is visible).');
-    setTimeout(() => lock.release(), 120000);
-  } catch (e) { setStatus(13, 'info', ($('d13').textContent ? $('d13').textContent + '\n' : '') + 'Screen Wake Lock refused: ' + e.message); }
-});
-
-/* 14. Network */
-card(14, 'Studio and university network',
-  'Fill in the network label at the top, then run this on the studio Wi-Fi with guest devices and again on cellular. Pass: page loaded in under 3 seconds and the pings succeed on both.');
-button(14, 'Ping 5 times', async () => {
-  const nav = performance.getEntriesByType ? performance.getEntriesByType('navigation')[0] : null;
-  const times = []; let errs = 0;
-  for (let i = 0; i < 5; i++) { try { times.push((await api('ping')).ms); } catch (e) { errs++; } }
-  const conn = navigator.connection ? (navigator.connection.effectiveType || '?') : 'n/a';
-  setStatus(14, 'info', 'network label: ' + ($('net').value || '(not set)') + '\npage load: ' + (nav ? fmt(nav.duration) : 'n/a') + '\npings ok ' + times.length + '/5, median ' + fmt(median(times)) + ', errors ' + errs + '\nconnection type reported: ' + conn + '\nMark pass or fail.');
-});
-manual(14);
-
-/* ============================================================ plumbing */
-function inAppGuess() {
-  const ua = navigator.userAgent;
-  if (/FBAN|FBAV|Instagram|Snapchat|MicroMessenger|Slack|Teams|GSA\/|Line\//i.test(ua) || /; wv\)/.test(ua)) return 'likely an in-app browser';
-  if (/iPhone|iPad/.test(ua) && !/Safari\//.test(ua)) return 'likely an in-app browser (iOS web view)';
-  return 'looks like a normal browser';
+    const fonts = await ensureFonts();
+    const tiles = G.note.map((id) => TILES[id]);
+    const seed = fnv(me.token + ':note:' + round);
+    const res = renderNote(tiles, seed, 1920, 1080);
+    const blob = await toBlob(res.canvas); lastBlob = blob;
+    $('doneImg').src = URL.createObjectURL(blob); $('doneBox').hidden = false;
+    const b64 = await blobToB64(blob);
+    const json = { app: 'ransom-notes', version: 1, round, prompt, player: me.name, submittedAt: new Date().toISOString(), auto: !!auto, canvas: { w: 1920, h: 1080 }, seed, scale: res.scale, fontsLoaded: fonts, words: res.placed };
+    let ok = false, lastErr = '';
+    for (let i = 0; i < 4 && !ok; i++) {
+      try { await api('upload', { name: me.name, token: me.token, round, png: b64, json: JSON.stringify(json) }, true); ok = true; }
+      catch (e) { lastErr = e.message; if (/wrong round|not in this game/.test(lastErr)) break; await sleep(1500 * (i + 1)); }
+    }
+    G.submitted = true; G.uploaded = ok; saveG();
+    if (ok) showDone('Submitted', 'Waiting for the next round.');
+    else showDone('Upload did not go through', lastErr + '. Tap Retry upload, or save the image and send it to the host.', true);
+  } catch (e) {
+    G.submitted = true; G.uploaded = false; saveG();
+    showDone('Something went wrong', e.message + '. Tap Retry upload.', true);
+  } finally { submitting = false; }
 }
-function report() {
-  const lines = [
-    'Ransom Notes probe, ' + new Date().toISOString(),
-    'Origin: ' + location.origin,
-    'Network: ' + ($('net').value || '(not set)'),
-    'Browser: ' + navigator.userAgent + ' [' + inAppGuess() + ']',
-    '',
-  ];
-  ORDER.forEach((id) => {
-    const r = results[id] || { status: 'pending', detail: '' };
-    lines.push(id + '. ' + META[id].title + ': ' + String(r.status).toUpperCase());
-    if (r.detail) lines.push('   ' + r.detail.replace(/\n/g, '\n   '));
-  });
-  return lines.join('\n');
-}
-$('copy').addEventListener('click', async () => {
-  const text = report();
-  try { await navigator.clipboard.writeText(text); $('copy').textContent = 'Copied'; }
-  catch (e) {
-    const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select();
-    try { document.execCommand('copy'); $('copy').textContent = 'Copied'; } catch (e2) { $('copy').textContent = 'Copy failed: select the text manually'; }
-    ta.remove();
+
+/* ================================================================== loop */
+async function doJoin() {
+  try {
+    const r = await api('join', { name: me.name, token: me.token }, true);
+    me.name = r.name || me.name; saveMe(); joined = true;
+  } catch (e) {
+    if (/name taken|game full|bad passcode/.test(e.message)) {
+      me = null; store.del('rn_me'); joined = false;
+      $('joinMsg').textContent = /taken/.test(e.message) ? 'That name is taken. Try another.' : /full/.test(e.message) ? 'The game is full.' : 'Game settings are wrong. Ask the host for a new link.';
+      show('Join');
+    }
+    throw e;
   }
-  setTimeout(() => { $('copy').textContent = 'Copy results'; }, 2000);
-});
-$('clear').addEventListener('click', () => { results = {}; store.del('probe_results'); location.reload(); });
+}
+function newRound() {
+  G = { round: S.round, hand: dealHand(me.token, S.round), note: [], swapsUsed: 0, submitted: false, uploaded: false, auto: false };
+  ui.tab = 'all'; ui.q = ''; ui.order = {}; ui.swapMode = false; ui.swapSel.clear(); ui.selNote = -1; $('q').value = '';
+  lastBlob = null; $('doneBox').hidden = true; saveG(); screen = '';
+}
+async function pollOnce() {
+  const t0 = Date.now();
+  const r = await api('poll');
+  noteClock(t0, Date.now(), r.serverNow);
+  S = r.state;
+  if (joined && me && !S.roster.some((p) => p.name.toLowerCase() === me.name.toLowerCase())) {
+    // host started a new game or removed this player: require an explicit rejoin
+    me = null; joined = false; G = null; store.del('rn_me'); store.del('rn_game'); screen = '';
+    $('joinMsg').textContent = 'The host reset the game or removed you. Enter your name to rejoin.';
+    show('Join'); return;
+  }
+  if (S.round > 0 && (!G || G.round !== S.round)) newRound();
+  if (screen === 'Play') renderPlay();
+}
+async function pollLoop() {
+  for (;;) {
+    if (me && CFG && !document.hidden) {
+      try { if (!joined) await doJoin(); await pollOnce(); setBanner(''); }
+      catch (e) { if (me) setBanner('Connection trouble. Retrying…'); }
+    }
+    await sleep(POLL_MS);
+  }
+}
+let lastPlayRender = 0;
+function tick() {
+  if (!CFG) return;
+  if (!me) { show('Join'); return; }
+  if (!S) { showWait('Joining…', ''); return; }
+  if (S.round === 0 || !G) { showWait('Waiting for the host', 'The first round has not started yet.'); return; }
+  if (G.submitted && screen !== 'Done') { showDone(G.uploaded ? 'Submitted' : 'Upload did not go through', G.uploaded ? 'Waiting for the next round.' : 'Tap Retry upload, or save the image and send it to the host.', !G.uploaded); return; }
+  if (G.submitted || submitting) return;
+  const end = S.startedAt + S.durationSec * 1000, now = serverTime();
+  const playing = S.phase === 'playing' && now < end;
+  if (playing) {
+    if (screen !== 'Play') { show('Play'); renderPlay(); }
+    const rem = Math.max(0, end - now) / 1000;
+    const secs = Math.ceil(rem);
+    $('timer').textContent = Math.floor(secs / 60) + ':' + String(secs % 60).padStart(2, '0');
+    $('timer').className = rem <= 10 ? 'low' : '';
+    return;
+  }
+  if (G.note.length) { submitNow(true); return; }
+  showWait('Round ' + G.round + ' is over', 'Waiting for the host to start the next round.');
+}
 
-['url', 'pass', 'net'].forEach((k) => {
-  $(k).value = store.get('probe_' + k) || '';
-  $(k).addEventListener('input', () => store.set('probe_' + k, $(k).value));
-});
-$('env').textContent = 'This browser ' + inAppGuess() + '. Page address: ' + location.origin;
+/* ============================================================== wiring */
+$('joinBtn').onclick = async () => {
+  const name = $('nameIn').value.replace(/\s+/g, ' ').trim();
+  if (!name) { $('joinMsg').textContent = 'Type a name first.'; return; }
+  me = { name, token: randomToken() }; saveMe(); joined = false; $('joinMsg').textContent = '';
+  try { await doJoin(); ensureFonts().catch(() => {}); await pollOnce(); } catch (e) { if (me) $('joinMsg').textContent = 'Could not join: ' + e.message; }
+};
+$('nameIn').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('joinBtn').click(); });
+$('tabs').addEventListener('click', (e) => { const b = e.target.closest('.tab'); if (!b) return; ui.tab = b.dataset.k; renderPlay(); });
+$('tiles').addEventListener('click', (e) => { const b = e.target.closest('.tile'); if (b) onTileTap(b.dataset.id); });
+$('strip').addEventListener('click', (e) => { const b = e.target.closest('.chip'); if (!b) return; const i = Number(b.dataset.i); ui.selNote = ui.selNote === i ? -1 : i; renderPlay(); });
+$('bLeft').onclick = () => { const i = ui.selNote; if (i > 0) { const t = G.note[i]; G.note[i] = G.note[i - 1]; G.note[i - 1] = t; ui.selNote = i - 1; saveG(); renderPlay(); } };
+$('bRight').onclick = () => { const i = ui.selNote; if (i >= 0 && i < G.note.length - 1) { const t = G.note[i]; G.note[i] = G.note[i + 1]; G.note[i + 1] = t; ui.selNote = i + 1; saveG(); renderPlay(); } };
+$('bRemove').onclick = () => { const i = ui.selNote; if (i >= 0) { G.note.splice(i, 1); ui.selNote = -1; saveG(); renderPlay(); } };
+$('bClear').onclick = async () => { if (G.note.length && await confirmDialog('Clear your note?', 'All words go back to your hand.', 'Clear', 'Keep')) { G.note = []; ui.selNote = -1; saveG(); renderPlay(); } };
+$('q').addEventListener('input', () => { ui.q = $('q').value; renderPlay(); $('q').focus(); });
+$('bRandom').onclick = () => { ui.order[ui.tab] = shuffle(G.hand, Math.random); renderPlay(); };
+$('bAZ').onclick = () => { ui.order[ui.tab] = 'az'; renderPlay(); };
+$('bSwap').onclick = () => { ui.swapMode = !ui.swapMode; ui.swapSel.clear(); renderPlay(); };
+$('swapBar').addEventListener('click', (e) => { if (e.target.id === 'swapGo') doSwap(); if (e.target.id === 'swapNo') { ui.swapMode = false; ui.swapSel.clear(); renderPlay(); } });
+$('doneBtn').onclick = async () => {
+  if (!G || !G.note.length) return;
+  const ok = await confirmDialog('Submit this note?', 'You cannot change it after you submit.', 'Submit', 'Keep editing');
+  if (ok) submitNow(false);
+};
+document.addEventListener('visibilitychange', () => { if (!document.hidden && me && CFG) pollOnce().catch(() => {}); });
 
-/* restore saved results (running tests did not finish: show pending) */
-ORDER.forEach((id) => {
-  const r = results[id];
-  if (!r) return;
-  $('p' + id).className = 'pill ' + (r.status === 'running' ? 'pending' : r.status);
-  $('p' + id).textContent = r.status === 'running' ? 'pending' : r.status;
-  $('d' + id).textContent = r.detail || '';
-});
-checkToken(true);
+CFG = loadCfg();
+if (!CFG) { $('waitTitle').textContent = 'Link needed'; $('waitMsg').textContent = 'Open the link the host shared. It carries the game settings.'; show('Wait'); }
+else { if (me) $('nameIn').value = me.name; setInterval(tick, 250); pollLoop(); }
 </script>
 </body>
 </html>
