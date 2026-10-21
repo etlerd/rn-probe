@@ -44,6 +44,7 @@
     <div id="stPrompt"></div>
     <div id="stTimer"></div>
     <div id="stState"></div>
+    <div id="netErr" class="err" style="margin-top:8px;font-weight:700" hidden></div>
   </div>
 
   <h2>Round</h2>
@@ -175,7 +176,7 @@ function tick() {
 }
 async function loop() {
   for (;;) {
-    if (cfg.u && cfg.p) { try { await poll(); } catch (e) { connected = false; $('stState').textContent = 'Connection trouble: ' + e.message; } }
+    if (cfg.u && cfg.p) { try { await poll(); $('netErr').hidden = true; } catch (e) { connected = false; $('netErr').hidden = false; $('netErr').textContent = 'Connection trouble: ' + e.message; } }
     await sleep(2000);
   }
 }
