@@ -1,0 +1,564 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ransom Notes probe</title>
+<style>
+  :root { --bg:#fafaf7; --fg:#1a1a1a; --muted:#666; --card:#fff; --line:#ddd; --pass:#1b7f3b; --fail:#b3261e; --info:#8a5a00; --run:#1a5fb4; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#16171a; --fg:#eee; --muted:#9a9a9a; --card:#202226; --line:#3a3c42; --pass:#5fd081; --fail:#ff8b82; --info:#e8b44f; --run:#7fb0ff; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:16px; background:var(--bg); color:var(--fg); font:16px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
+  main { max-width: 680px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  h2 { font-size: 16px; margin: 0 0 6px; }
+  .muted { color: var(--muted); font-size: 14px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px; margin:12px 0; }
+  label { display:block; font-size:14px; margin:8px 0 2px; color:var(--muted); }
+  input, select { width:100%; padding:10px; font-size:16px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--fg); }
+  select { width:auto; }
+  button { padding:10px 12px; margin:6px 6px 0 0; font-size:15px; border:1px solid var(--line); border-radius:8px; background:var(--card); color:var(--fg); }
+  button:active { opacity:.7 }
+  button:disabled { opacity:.45 }
+  .pill { display:inline-block; font-size:12px; padding:2px 8px; border-radius:999px; border:1px solid currentColor; margin-right:6px; vertical-align:middle; text-transform:uppercase; letter-spacing:.04em; }
+  .pending { color: var(--muted); } .pass { color: var(--pass); } .fail { color: var(--fail); } .info { color: var(--info); } .running { color: var(--run); }
+  .how { margin: 4px 0 6px; font-size: 14px; color: var(--muted); }
+  pre.detail { white-space: pre-wrap; word-break: break-word; font: 13px/1.35 ui-monospace,Menlo,Consolas,monospace; margin: 8px 0 0; }
+  .checker { background-color:#fff; background-image: linear-gradient(45deg,#ccc 25%,transparent 25%,transparent 75%,#ccc 75%),linear-gradient(45deg,#ccc 25%,transparent 25%,transparent 75%,#ccc 75%); background-size:20px 20px; background-position:0 0,10px 10px; border:1px solid var(--line); margin-top:8px; display:none; }
+  .checker img, .checker canvas { display:block; width:100%; height:auto; }
+  #cd8 { font-size: 28px; font-weight: 700; margin-top: 8px; font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Ransom Notes probe</h1>
+  <p class="muted">Throwaway test page. It checks whether GitHub Pages plus Apps Script can run the game. Run the tests below, then tap <b>Copy results</b> and paste them into the chat.</p>
+
+  <section class="card">
+    <label for="url">Apps Script web app URL (ends in /exec)</label>
+    <input id="url" type="url" autocapitalize="off" autocorrect="off" spellcheck="false">
+    <label for="pass">Passcode</label>
+    <input id="pass" type="text" autocapitalize="off" autocorrect="off" spellcheck="false">
+    <label for="net">Network label for this run (for example studio-wifi, cellular, eduroam)</label>
+    <input id="net" type="text" autocapitalize="off" autocorrect="off" spellcheck="false">
+    <p class="muted" id="env"></p>
+    <button id="copy">Copy results</button>
+    <button id="clear">Clear saved results</button>
+  </section>
+
+  <div id="tests"></div>
+</main>
+
+<script>
+'use strict';
+
+/* ------------------------------------------------------------ utilities */
+const $ = (id) => document.getElementById(id);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); return true; } catch (e) { return false; } },
+  del(k) { try { localStorage.removeItem(k); } catch (e) { /* ignore */ } },
+};
+function median(a) { if (!a.length) return NaN; const s = a.slice().sort((x, y) => x - y); const m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; }
+function pct(a, p) { if (!a.length) return NaN; const s = a.slice().sort((x, y) => x - y); return s[Math.min(s.length - 1, Math.max(0, Math.ceil((p / 100) * s.length) - 1))]; }
+const fmt = (n) => (Number.isFinite(n) ? Math.round(n) + ' ms' : 'n/a');
+const fmtAge = (sec) => (sec < 120 ? Math.round(sec) + ' s' : Math.round(sec / 60) + ' min');
+const stop = {}; // per-test stop flags
+
+/* ------------------------------------------------------ test card model */
+const ORDER = [];
+const META = {};
+let results = {};
+try { results = JSON.parse(store.get('probe_results') || '{}'); } catch (e) { results = {}; }
+
+function card(id, title, how, extraHtml) {
+  ORDER.push(id);
+  META[id] = { title };
+  const el = document.createElement('section');
+  el.className = 'card';
+  el.innerHTML =
+    '<h2><span class="pill pending" id="p' + id + '">pending</span>' + id + '. ' + title + '</h2>' +
+    '<div class="how">' + how + '</div>' +
+    '<div id="x' + id + '"></div>' +
+    '<div id="b' + id + '"></div>' +
+    (extraHtml || '') +
+    '<pre class="detail" id="d' + id + '"></pre>';
+  $('tests').appendChild(el);
+}
+function setStatus(id, status, detail) {
+  const p = $('p' + id);
+  p.className = 'pill ' + status;
+  p.textContent = status;
+  if (detail !== undefined) $('d' + id).textContent = detail;
+  results[id] = { status, detail: $('d' + id).textContent };
+  store.set('probe_results', JSON.stringify(results));
+}
+function button(id, label, fn, opts) {
+  const b = document.createElement('button');
+  b.textContent = label;
+  b.addEventListener('click', async () => {
+    b.disabled = true;
+    try { await fn(); }
+    catch (e) { setStatus(id, 'fail', 'Error: ' + (e && e.message ? e.message : e)); }
+    finally { b.disabled = false; }
+  });
+  $((opts && opts.into) || 'b' + id).appendChild(b);
+  return b;
+}
+function manual(id) {
+  button(id, 'Mark pass', async () => setStatus(id, 'pass', ($('d' + id).textContent || '') + '\n(marked pass manually)'));
+  button(id, 'Mark fail', async () => setStatus(id, 'fail', ($('d' + id).textContent || '') + '\n(marked fail manually)'));
+}
+function stopButton(id) { button(id, 'Stop', async () => { stop[id] = true; }); }
+
+/* ----------------------------------------------------------- server API */
+function cfg() { return { url: $('url').value.trim(), pass: $('pass').value.trim() }; }
+async function api(action, params, post) {
+  const { url, pass } = cfg();
+  if (!url) throw new Error('Enter the web app URL first');
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 30000);
+  const t0 = performance.now();
+  try {
+    let res;
+    if (post) {
+      res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(Object.assign({ action, pass }, params || {})),
+        signal: ctl.signal,
+      });
+    } else {
+      const u = new URL(url);
+      u.searchParams.set('action', action);
+      u.searchParams.set('pass', pass);
+      Object.keys(params || {}).forEach((k) => u.searchParams.set(k, params[k]));
+      res = await fetch(u.toString(), { signal: ctl.signal });
+    }
+    const text = await res.text();
+    let data;
+    try { data = JSON.parse(text); }
+    catch (e) { throw new Error('Reply was not JSON (HTTP ' + res.status + '). Start of reply: ' + text.slice(0, 100).replace(/\s+/g, ' ')); }
+    if (!data.ok) throw new Error('Server said: ' + (data.error || 'not ok'));
+    return { data, ms: performance.now() - t0 };
+  } catch (e) {
+    if (e.name === 'AbortError') throw new Error('Timed out after 30 s');
+    if (e instanceof TypeError) throw new Error(e.message + ' (the browser may have blocked the call: cross-origin rules, a network block, or no connection)');
+    throw e;
+  } finally { clearTimeout(timer); }
+}
+
+/* ------------------------------------------------- canvas / note drawing */
+function rng(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+const FONTS = [
+  { fam: 'Special Elite', spec: '32px "Special Elite"' },
+  { fam: 'Bangers', spec: '32px "Bangers"' },
+  { fam: 'Playfair Display', spec: '900 32px "Playfair Display"' },
+  { fam: 'Courier Prime', spec: '700 32px "Courier Prime"' },
+  { fam: 'Abril Fatface', spec: '32px "Abril Fatface"' },
+];
+const FONT_CSS = 'https://fonts.googleapis.com/css2?family=Special+Elite&family=Bangers&family=Playfair+Display:wght@900&family=Courier+Prime:wght@700&family=Abril+Fatface&display=swap';
+const SCRAPS = ['#f4ecd8', '#fff3b0', '#d9e8f5', '#f7d9d9', '#e3f2d3', '#ffffff', '#f0e0c8', '#222222'];
+const WORDS = ['diagnose', 'the', 'llama', 'your', 'bedside', 'manner', 'is', 'febrile', 'and', 'vibe', 'check', 'scalpel', 'ugh', 'yeet', 'with', 'mullet', 'panic', 'of', 'a', 'goblin'];
+function sampleWords(i) { const out = []; for (let k = 0; k < 12; k++) out.push(WORDS[(i * 3 + k * 7) % WORDS.length]); return out; }
+
+let fontsPromise = null;
+function ensureFonts(force) {
+  if (force) fontsPromise = null;
+  if (!fontsPromise) {
+    fontsPromise = (async () => {
+      let link = $('gf');
+      if (!link) {
+        link = document.createElement('link');
+        link.id = 'gf'; link.rel = 'stylesheet'; link.href = FONT_CSS;
+        document.head.appendChild(link);
+        await new Promise((r) => { link.onload = r; link.onerror = r; setTimeout(r, 8000); });
+      }
+      const res = {};
+      for (const f of FONTS) {
+        try {
+          const faces = await document.fonts.load(f.spec);
+          res[f.fam] = faces.length > 0 && faces.every((x) => x.status === 'loaded');
+        } catch (e) { res[f.fam] = false; }
+      }
+      return res;
+    })();
+  }
+  return fontsPromise;
+}
+
+function drawNote(w, h, words, seed, label) {
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const g = c.getContext('2d');
+  const r = rng(seed);
+  g.clearRect(0, 0, w, h);
+  const size = Math.round(h * 0.085);
+  const padX = Math.round(size * 0.35), padY = Math.round(size * 0.25), gap = Math.round(size * 0.2), margin = Math.round(size * 0.8);
+  const items = words.map((t) => {
+    const fam = FONTS[Math.floor(r() * FONTS.length)].fam;
+    const fs = Math.round(size * (0.8 + r() * 0.5));
+    const font = fs + 'px "' + fam + '", Georgia, serif';
+    g.font = font;
+    return { t, font, fs, w: g.measureText(t).width + padX * 2, h: fs + padY * 2, rot: (r() - 0.5) * 0.14, bg: SCRAPS[Math.floor(r() * SCRAPS.length)], dy: (r() - 0.5) * size * 0.25 };
+  });
+  let x = margin, y = margin, rowH = 0;
+  items.forEach((it) => {
+    if (x + it.w > w - margin) { x = margin; y += rowH + gap; rowH = 0; }
+    it.x = x; it.y = y; x += it.w + gap; rowH = Math.max(rowH, it.h);
+  });
+  const offY = Math.max(0, (h - (y + rowH)) / 2 - margin / 2);
+  items.forEach((it) => {
+    g.save();
+    g.translate(it.x + it.w / 2, it.y + it.h / 2 + offY + it.dy);
+    g.rotate(it.rot);
+    g.shadowColor = 'rgba(0,0,0,.35)'; g.shadowBlur = 6; g.shadowOffsetY = 3;
+    g.fillStyle = it.bg;
+    g.fillRect(-it.w / 2, -it.h / 2, it.w, it.h);
+    g.shadowColor = 'transparent';
+    g.strokeStyle = 'rgba(0,0,0,.25)'; g.lineWidth = 2;
+    g.strokeRect(-it.w / 2, -it.h / 2, it.w, it.h);
+    g.fillStyle = it.bg === '#222222' ? '#fff' : '#111';
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.font = it.font;
+    g.fillText(it.t, 0, 0);
+    g.restore();
+  });
+  if (label) { g.font = '20px sans-serif'; g.fillStyle = '#c00'; g.fillText(label, 20, h - 20); }
+  return c;
+}
+const toBlob = (c) => new Promise((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error('canvas.toBlob returned nothing'))), 'image/png'));
+const blobToB64 = (b) => new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).split(',')[1]); fr.onerror = () => rej(new Error('FileReader failed')); fr.readAsDataURL(b); });
+let lastPngBlob = null;
+
+/* ================================================================ TESTS */
+
+/* 1. Cross-origin calls */
+card(1, 'Cross-origin calls from this page to Apps Script',
+  'One GET and one POST. Must be run from your github.io address, not from a local file.');
+button(1, 'Run test', async () => {
+  const lines = ['Page origin: ' + location.origin];
+  let ok = true;
+  try { const g = await api('ping'); lines.push('GET ok in ' + fmt(g.ms)); } catch (e) { ok = false; lines.push('GET failed: ' + e.message); }
+  try { const p = await api('ping', {}, true); lines.push('POST ok in ' + fmt(p.ms)); } catch (e) { ok = false; lines.push('POST failed: ' + e.message); }
+  const local = location.protocol === 'file:' || /^(localhost|127\.|\[::1\])/.test(location.hostname);
+  if (local) { lines.push('NOT A VALID TEST: open this page from your github.io address.'); ok = false; }
+  setStatus(1, ok ? 'pass' : 'fail', lines.join('\n'));
+});
+
+/* 2. Anyone access */
+card(2, '"Anyone" access works without a Google sign-in',
+  'On a phone using cellular data, open this page in a private tab while signed out of Google, then run test 1. If test 1 passes there, mark pass here. If the deployment menu would not offer "Anyone", mark fail.');
+manual(2);
+
+/* 3. Latency */
+card(3, 'Latency, warm and cold',
+  '20 calls, one every 15 seconds (5 minutes). Keep the screen on. Run it again after 10+ minutes idle: the first call of that run is the cold start. Pass: no errors, median under 1000 ms, slowest under 4000 ms (my thresholds).');
+button(3, 'Run 20 calls', async () => {
+  stop[3] = false;
+  const times = []; let errs = 0; const N = 20;
+  for (let i = 0; i < N && !stop[3]; i++) {
+    try { times.push((await api('ping')).ms); } catch (e) { errs++; }
+    setStatus(3, 'running', 'call ' + (i + 1) + '/' + N + '  first=' + fmt(times[0]) + '  last=' + fmt(times[times.length - 1]) + '  errors=' + errs);
+    if (i < N - 1) await sleep(15000);
+  }
+  const med = median(times), mx = Math.max.apply(null, times.length ? times : [NaN]);
+  const ok = errs === 0 && times.length > 0 && med < 1000 && mx < 4000;
+  setStatus(3, ok ? 'pass' : 'fail', 'calls=' + times.length + ' errors=' + errs + '\nfirst=' + fmt(times[0]) + ' median=' + fmt(med) + ' p95=' + fmt(pct(times, 95)) + ' slowest=' + fmt(mx) + (stop[3] ? '\n(stopped early)' : ''));
+});
+stopButton(3);
+
+/* 4. Polling load */
+card(4, 'Six phones polling every 2.5 seconds',
+  'Six simulated pollers in this tab. Quotas count against the Google account, so one tab exercises them. Keep the screen on. Pass: zero errors.',
+  '');
+{
+  const sel = document.createElement('select');
+  sel.id = 't4dur';
+  [['1', '1 minute'], ['5', '5 minutes'], ['10', '10 minutes']].forEach((o) => { const op = document.createElement('option'); op.value = o[0]; op.textContent = o[1]; sel.appendChild(op); });
+  sel.value = '10';
+  $('x4').appendChild(sel);
+}
+button(4, 'Run polling test', async () => {
+  stop[4] = false;
+  const mins = Number($('t4dur').value);
+  const end = Date.now() + mins * 60000;
+  let reqs = 0, errs = 0; const times = []; const msgs = new Set();
+  const poller = async () => {
+    await sleep(Math.random() * 2500);
+    while (Date.now() < end && !stop[4]) {
+      try { times.push((await api('poll')).ms); reqs++; }
+      catch (e) { reqs++; errs++; msgs.add(e.message.slice(0, 90)); }
+      await sleep(2500);
+    }
+  };
+  const ui = setInterval(() => setStatus(4, 'running', 'requests=' + reqs + ' errors=' + errs + ' median=' + fmt(median(times)) + ' slowest=' + fmt(Math.max.apply(null, times.length ? times : [NaN]))), 1000);
+  await Promise.all([0, 1, 2, 3, 4, 5].map(poller));
+  clearInterval(ui);
+  setStatus(4, errs === 0 && reqs > 0 ? 'pass' : 'fail',
+    'requests=' + reqs + ' errors=' + errs + ' median=' + fmt(median(times)) + ' p95=' + fmt(pct(times, 95)) + ' slowest=' + fmt(Math.max.apply(null, times.length ? times : [NaN])) + (msgs.size ? '\nerror messages: ' + Array.from(msgs).join(' | ') : '') + (stop[4] ? '\n(stopped early)' : ''));
+});
+stopButton(4);
+
+/* 5. Simultaneous writes */
+card(5, 'Six players joining and uploading at the same moment',
+  'Resets the test roster, joins six names at once, renders six full-size PNGs, uploads all six at once, then counts what arrived. Pass: 6 joins, 6 roster names, 6 uploads, 6 PNG files in the Drive folder.');
+button(5, 'Run test', async () => {
+  const run = String(Date.now()).slice(-9);
+  const names = [1, 2, 3, 4, 5, 6].map((i) => 'P' + i + '_' + run);
+  setStatus(5, 'running', 'resetting roster...');
+  await api('reset', {}, true);
+  setStatus(5, 'running', 'joining six players at once...');
+  const joins = await Promise.allSettled(names.map((n, i) => api('join', { name: n, token: 'tok' + i + run }, true)));
+  const joinOk = joins.filter((j) => j.status === 'fulfilled').length;
+  const st = await api('poll');
+  const roster = st.data.state.roster.map((r) => r.name);
+  const rosterHas = names.filter((n) => roster.indexOf(n) >= 0).length;
+  setStatus(5, 'running', 'rendering six PNGs...');
+  await ensureFonts();
+  const payloads = [];
+  for (let i = 0; i < 6; i++) {
+    const c = drawNote(1920, 1080, sampleWords(i), Number(run) + i, names[i]);
+    payloads.push({ name: names[i], round: 97, png: await blobToB64(await toBlob(c)), json: JSON.stringify({ probe: true, run, player: names[i] }) });
+  }
+  const kb = Math.round(payloads.reduce((a, p) => a + p.png.length, 0) / 1024);
+  setStatus(5, 'running', 'uploading six PNGs at once (' + kb + ' KB of base64 in total)...');
+  const t0 = performance.now();
+  const ups = await Promise.allSettled(payloads.map((p) => api('upload', p, true)));
+  const upMs = performance.now() - t0;
+  const upOk = ups.filter((u) => u.status === 'fulfilled').length;
+  const upErr = ups.filter((u) => u.status === 'rejected').map((u) => u.reason.message.slice(0, 80));
+  await sleep(2000);
+  const fl = await api('files', { run });
+  const pngs = fl.data.names.filter((n) => /\.png$/.test(n)).length;
+  const ok = joinOk === 6 && rosterHas === 6 && upOk === 6 && pngs === 6;
+  setStatus(5, ok ? 'pass' : 'fail',
+    'joins ok: ' + joinOk + '/6\nnames on roster: ' + rosterHas + '/6\nuploads ok: ' + upOk + '/6 in ' + fmt(upMs) + '\nPNG files found in Drive folder: ' + pngs + '/6\nrun id: ' + run + (upErr.length ? '\nupload errors: ' + upErr.join(' | ') : ''));
+});
+
+/* 6. Real PNG upload */
+card(6, 'Real-size transparent PNG upload',
+  'Draws a 1920x1080 note with a transparent background and uploads it. The preview sits on a checkerboard: the checkerboard must show through everywhere there is no paper scrap. Then confirm the saved file in Drive (best check: import it into Premiere).',
+  '<div class="checker" id="prev6"><img id="img6" alt="note preview"></div>');
+button(6, 'Draw and upload', async () => {
+  const fonts = await ensureFonts();
+  const run = String(Date.now()).slice(-9);
+  const c = drawNote(1920, 1080, sampleWords(2), Number(run), null);
+  const blob = await toBlob(c);
+  lastPngBlob = blob;
+  $('img6').src = URL.createObjectURL(blob);
+  $('prev6').style.display = 'block';
+  const b64 = await blobToB64(blob);
+  const t0 = performance.now();
+  const r = await api('upload', { name: 'T6_' + run, round: 98, png: b64, json: JSON.stringify({ probe: true }) }, true);
+  const ms = performance.now() - t0;
+  const fontsOk = Object.keys(fonts).every((k) => fonts[k]);
+  setStatus(6, 'pass', 'PNG ' + Math.round(blob.size / 1024) + ' KB, upload took ' + fmt(ms) + '\nsaved as ' + r.data.filename + ' (' + r.data.bytes + ' bytes on the server)\nserver bytes match local bytes: ' + (r.data.bytes === blob.size ? 'yes' : 'NO') + '\nfonts loaded for this drawing: ' + (fontsOk ? 'all' : 'SOME MISSING (see test 11)') + '\nStill to check by eye: transparency in the preview and in the Drive file.');
+});
+
+/* 7. Drive sync */
+card(7, 'Drive folder syncs to the editing computer',
+  'After tests 5 and 6, watch the Drive folder RansomNotesProbe on the editing computer (Drive for desktop). Note how many seconds files take to appear. Pass: under about 30 seconds, files open normally.');
+manual(7);
+
+/* 8. Clock and shared countdown */
+let offset = 0, offsetKnown = false;
+async function measureOffset() {
+  const samples = [];
+  for (let i = 0; i < 6; i++) {
+    const t0 = Date.now(); const r = await api('ping'); const t1 = Date.now();
+    samples.push({ rtt: t1 - t0, off: r.data.serverNow - (t0 + t1) / 2 });
+  }
+  samples.sort((a, b) => a.rtt - b.rtt);
+  offset = samples[0].off; offsetKnown = true;
+  return samples[0];
+}
+card(8, 'Timers agree across phones',
+  'Measure the offset between this device\'s clock and the server\'s, then run a shared 30-second countdown. On ONE device tap Start; on ALL devices (including that one) tap Follow, and compare the "corrected" numbers side by side. Pass: within about 1 second of each other.',
+  '<div id="cd8"></div>');
+button(8, 'Measure clock offset', async () => {
+  const s = await measureOffset();
+  setStatus(8, 'info', 'This device clock is off from the server by ' + Math.round(s.off) + ' ms (best round trip ' + s.rtt + ' ms).');
+});
+button(8, 'Start 30 s countdown (one device)', async () => {
+  await api('start', { durationSec: 30 }, true);
+  setStatus(8, 'info', 'Countdown started on the server. Tap Follow on every device.');
+});
+button(8, 'Follow countdown', async () => {
+  stop[8] = false;
+  if (!offsetKnown) await measureOffset();
+  let st = null, lastPoll = 0, polling = false;
+  while (!stop[8]) {
+    if (!polling && Date.now() - lastPoll > 2000) {
+      polling = true; lastPoll = Date.now();
+      api('poll').then((r) => { st = r.data.state; }).catch(() => {}).finally(() => { polling = false; });
+    }
+    if (st && st.startedAt) {
+      const corrected = st.durationSec - (Date.now() + offset - st.startedAt) / 1000;
+      const raw = st.durationSec - (Date.now() - st.startedAt) / 1000;
+      $('cd8').textContent = 'corrected ' + Math.max(0, corrected).toFixed(1) + ' s   |   raw phone clock ' + Math.max(0, raw).toFixed(1) + ' s';
+    }
+    await sleep(100);
+  }
+});
+stopButton(8);
+manual(8);
+
+/* 9. Token survives sleep */
+card(9, 'Player token survives the phone sleeping',
+  'Tap Save token. Lock the phone for 5+ minutes, use other apps, then come back to this page. The page checks the token on return. Test on iPhone Safari and on Android Chrome.');
+function checkToken(auto) {
+  const raw = store.get('probe_token');
+  const cookie = /probe_saved=1/.test(document.cookie);
+  if (raw) {
+    let rec = null; try { rec = JSON.parse(raw); } catch (e) { /* ignore */ }
+    if (!rec) return;
+    const age = (Date.now() - rec.savedAt) / 1000;
+    setStatus(9, age >= 300 ? 'pass' : 'info', 'Token ' + rec.tok + ' is still here, saved ' + fmtAge(age) + ' ago.' + (age < 300 ? '\nLock the phone for 5+ minutes, then reopen this page.' : ''));
+  } else if (cookie) {
+    setStatus(9, 'fail', 'Storage was cleared: a cookie saved at the same time survived, but the saved token did not.');
+  } else if (!auto) {
+    setStatus(9, 'info', 'No token saved yet.');
+  }
+}
+button(9, 'Save token', async () => {
+  const rec = { tok: 'tok_' + Math.random().toString(36).slice(2, 10), savedAt: Date.now() };
+  const ok = store.set('probe_token', JSON.stringify(rec));
+  try { document.cookie = 'probe_saved=1; max-age=86400; path=/; SameSite=Lax'; } catch (e) { /* ignore */ }
+  if (!ok) setStatus(9, 'fail', 'This browser refused to save anything (storage blocked).');
+  else checkToken(false);
+});
+button(9, 'Check token', async () => checkToken(false));
+
+/* 10. In-app browsers */
+card(10, 'Link opened from a text message or chat app',
+  'Send yourself this page\'s address in a text message and in Slack or email. Open it from there. Look at the browser line below: "in-app browser" means the message app\'s built-in viewer. Run test 9 there (Save token), then open the same address in the main browser and Check token. If the token is missing in one of them, guests must open the link in their main browser.');
+manual(10);
+
+/* 11. Fonts */
+card(11, 'Fonts load before drawing',
+  'Loads five Google fonts and draws a sample. Pass: all five report loaded and the sample shows five different typefaces. If the network blocks Google Fonts, this fails, and notes would be drawn in a plain fallback font.',
+  '<div class="checker" id="prev11"></div>');
+button(11, 'Load fonts and draw sample', async () => {
+  const res = await ensureFonts(true);
+  const c = document.createElement('canvas'); c.width = 900; c.height = 60 + FONTS.length * 70;
+  const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.fillStyle = '#111'; g.textBaseline = 'middle';
+  FONTS.forEach((f, i) => { g.font = '44px "' + f.fam + '", monospace'; g.fillText(f.fam + (res[f.fam] ? '' : ' (FAILED)'), 20, 50 + i * 70); });
+  const box = $('prev11'); box.innerHTML = ''; box.appendChild(c); box.style.display = 'block';
+  const ok = Object.keys(res).every((k) => res[k]);
+  setStatus(11, ok ? 'pass' : 'fail', FONTS.map((f) => f.fam + ': ' + (res[f.fam] ? 'loaded' : 'NOT loaded')).join('\n'));
+});
+
+/* 12. Save image */
+card(12, 'Save-image fallback on iPhone',
+  'Run test 6 first. Tap Download PNG. On iPhone Safari also try pressing and holding the preview image in test 6 and choosing Save to Photos. Pass: you can get the file onto the phone by at least one route.');
+button(12, 'Download PNG', async () => {
+  if (!lastPngBlob) { setStatus(12, 'info', 'Run test 6 first so there is a PNG to save.'); return; }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(lastPngBlob); a.download = 'probe-note.png';
+  document.body.appendChild(a); a.click(); a.remove();
+  setStatus(12, 'info', 'Download triggered. Did a file or a share sheet appear? Then mark pass or fail.');
+});
+manual(12);
+
+/* 13. Sleep and wake */
+card(13, 'Phone sleeps mid-round',
+  'Set the URL and passcode, then leave this page untouched for 60 seconds (let the screen lock or switch apps), and come back. The page polls the server on return and logs it. Pass: a wake after 30+ seconds hidden, with a successful poll.');
+const wakeLog = []; let hiddenAt = null;
+document.addEventListener('visibilitychange', async () => {
+  if (document.hidden) { hiddenAt = Date.now(); return; }
+  if (!hiddenAt) return;
+  const gap = (Date.now() - hiddenAt) / 1000; hiddenAt = null;
+  let res;
+  if (!cfg().url) res = '(no URL set, no poll made)';
+  else { try { res = 'poll ok in ' + fmt((await api('poll')).ms); } catch (e) { res = 'poll FAILED: ' + e.message; } }
+  wakeLog.push('hidden ' + Math.round(gap) + ' s, then ' + res);
+  const goodWake = wakeLog.some((l) => /^hidden (\d+) s, then poll ok/.test(l) && Number(l.match(/^hidden (\d+)/)[1]) >= 30);
+  const failed = wakeLog.some((l) => /FAILED/.test(l));
+  setStatus(13, goodWake ? 'pass' : failed ? 'fail' : 'info', wakeLog.join('\n'));
+  if (document.hidden === false) checkToken(true);
+});
+button(13, 'Try screen wake lock', async () => {
+  if (!('wakeLock' in navigator)) { setStatus(13, 'info', ($('d13').textContent ? $('d13').textContent + '\n' : '') + 'Screen Wake Lock is not supported in this browser.'); return; }
+  try {
+    const lock = await navigator.wakeLock.request('screen');
+    setStatus(13, 'info', ($('d13').textContent ? $('d13').textContent + '\n' : '') + 'Screen Wake Lock granted (screen should now stay on while this page is visible).');
+    setTimeout(() => lock.release(), 120000);
+  } catch (e) { setStatus(13, 'info', ($('d13').textContent ? $('d13').textContent + '\n' : '') + 'Screen Wake Lock refused: ' + e.message); }
+});
+
+/* 14. Network */
+card(14, 'Studio and university network',
+  'Fill in the network label at the top, then run this on the studio Wi-Fi with guest devices and again on cellular. Pass: page loaded in under 3 seconds and the pings succeed on both.');
+button(14, 'Ping 5 times', async () => {
+  const nav = performance.getEntriesByType ? performance.getEntriesByType('navigation')[0] : null;
+  const times = []; let errs = 0;
+  for (let i = 0; i < 5; i++) { try { times.push((await api('ping')).ms); } catch (e) { errs++; } }
+  const conn = navigator.connection ? (navigator.connection.effectiveType || '?') : 'n/a';
+  setStatus(14, 'info', 'network label: ' + ($('net').value || '(not set)') + '\npage load: ' + (nav ? fmt(nav.duration) : 'n/a') + '\npings ok ' + times.length + '/5, median ' + fmt(median(times)) + ', errors ' + errs + '\nconnection type reported: ' + conn + '\nMark pass or fail.');
+});
+manual(14);
+
+/* ============================================================ plumbing */
+function inAppGuess() {
+  const ua = navigator.userAgent;
+  if (/FBAN|FBAV|Instagram|Snapchat|MicroMessenger|Slack|Teams|GSA\/|Line\//i.test(ua) || /; wv\)/.test(ua)) return 'likely an in-app browser';
+  if (/iPhone|iPad/.test(ua) && !/Safari\//.test(ua)) return 'likely an in-app browser (iOS web view)';
+  return 'looks like a normal browser';
+}
+function report() {
+  const lines = [
+    'Ransom Notes probe, ' + new Date().toISOString(),
+    'Origin: ' + location.origin,
+    'Network: ' + ($('net').value || '(not set)'),
+    'Browser: ' + navigator.userAgent + ' [' + inAppGuess() + ']',
+    '',
+  ];
+  ORDER.forEach((id) => {
+    const r = results[id] || { status: 'pending', detail: '' };
+    lines.push(id + '. ' + META[id].title + ': ' + String(r.status).toUpperCase());
+    if (r.detail) lines.push('   ' + r.detail.replace(/\n/g, '\n   '));
+  });
+  return lines.join('\n');
+}
+$('copy').addEventListener('click', async () => {
+  const text = report();
+  try { await navigator.clipboard.writeText(text); $('copy').textContent = 'Copied'; }
+  catch (e) {
+    const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); $('copy').textContent = 'Copied'; } catch (e2) { $('copy').textContent = 'Copy failed: select the text manually'; }
+    ta.remove();
+  }
+  setTimeout(() => { $('copy').textContent = 'Copy results'; }, 2000);
+});
+$('clear').addEventListener('click', () => { results = {}; store.del('probe_results'); location.reload(); });
+
+['url', 'pass', 'net'].forEach((k) => {
+  $(k).value = store.get('probe_' + k) || '';
+  $(k).addEventListener('input', () => store.set('probe_' + k, $(k).value));
+});
+$('env').textContent = 'This browser ' + inAppGuess() + '. Page address: ' + location.origin;
+
+/* restore saved results (running tests did not finish: show pending) */
+ORDER.forEach((id) => {
+  const r = results[id];
+  if (!r) return;
+  $('p' + id).className = 'pill ' + (r.status === 'running' ? 'pending' : r.status);
+  $('p' + id).textContent = r.status === 'running' ? 'pending' : r.status;
+  $('d' + id).textContent = r.detail || '';
+});
+checkToken(true);
+</script>
+</body>
+</html>
