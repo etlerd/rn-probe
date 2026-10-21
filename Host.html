@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ransom Notes Host</title>
+<style>
+  :root { --bg:#14130f; --fg:#f4f0e6; --muted:#a39d8f; --card:#1f1e19; --line:#3d3a32; --accent:#ff6b5e; --ok:#5fd081; --warn:#e0b24a; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:17px/1.35 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
+  [hidden] { display:none !important; }
+  button, select, input { font:inherit; color:inherit; }
+  .wrap { max-width:1100px; margin:0 auto; padding:16px; }
+  h2 { font-size:15px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin:22px 0 8px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; }
+  .stage { text-align:center; padding:26px 16px; }
+  #stRound { color:var(--muted); font-weight:700; letter-spacing:.06em; }
+  #stPrompt { font-size:clamp(26px,4.4vw,52px); font-weight:800; line-height:1.15; margin:10px auto; max-width:900px; min-height:1.2em; }
+  #stTimer { font-size:clamp(54px,11vw,140px); font-weight:900; font-variant-numeric:tabular-nums; line-height:1; }
+  #stTimer.low { color:var(--accent); }
+  #stState { color:var(--muted); margin-top:6px; }
+  .row { display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
+  button { padding:11px 16px; border-radius:10px; border:1px solid var(--line); background:var(--card); cursor:pointer; }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#1a0a08; font-weight:800; }
+  button.danger { border-color:var(--accent); color:var(--accent); }
+  button:disabled { opacity:.4; cursor:default; }
+  select, input[type=text], input[type=password] { padding:10px; border-radius:8px; border:1px solid var(--line); background:var(--bg); width:100%; }
+  label { display:block; color:var(--muted); font-size:14px; margin:10px 0 4px; }
+  #roster { display:flex; flex-wrap:wrap; gap:8px; }
+  .pl { display:flex; align-items:center; gap:8px; padding:8px 12px; border:1px solid var(--line); border-radius:999px; background:var(--card); }
+  .pl .dot { width:12px; height:12px; border-radius:50%; background:var(--line); }
+  .pl.done { border-color:var(--ok); } .pl.done .dot { background:var(--ok); }
+  .pl button { padding:0 6px; border:0; background:none; color:var(--muted); font-size:18px; }
+  #msg { min-height:1.4em; margin-top:8px; }
+  .err { color:var(--accent); } .okc { color:var(--ok); }
+  code { background:var(--bg); padding:2px 5px; border-radius:4px; word-break:break-all; }
+  #link { word-break:break-all; font-size:14px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card stage">
+    <div id="stRound">NO ROUND YET</div>
+    <div id="stPrompt"></div>
+    <div id="stTimer"></div>
+    <div id="stState"></div>
+  </div>
+
+  <h2>Round</h2>
+  <div class="card">
+    <div class="row">
+      <label style="margin:0">Length</label>
+      <select id="dur" style="width:auto">
+        <option value="60">60 s</option><option value="90" selected>90 s</option><option value="120">120 s</option><option value="150">150 s</option>
+      </select>
+      <button id="bStart" class="primary">Start round</button>
+      <button id="bEnd" class="danger">End round now</button>
+    </div>
+    <div id="msg"></div>
+  </div>
+
+  <h2>Players <span id="pCount" class="muted"></span></h2>
+  <div class="card"><div id="roster"></div><div id="noPl" class="muted">Nobody has joined yet.</div></div>
+
+  <h2>Game</h2>
+  <div class="card">
+    <div class="row">
+      <button id="bNew" class="danger">New game (clears players)</button>
+      <button id="bResetP" class="danger">Reset used prompts</button>
+      <span id="pUsed" class="muted"></span>
+    </div>
+  </div>
+
+  <h2>Settings and player link</h2>
+  <div class="card">
+    <label for="cU">Apps Script web app URL (ends in /exec)</label>
+    <input id="cU" type="text" placeholder="https://script.google.com/macros/s/.../exec" autocomplete="off">
+    <label for="cP">Player passcode</label>
+    <input id="cP" type="password" autocomplete="off">
+    <label for="cH">Host passcode (stays on this device; never in the player link)</label>
+    <input id="cH" type="password" autocomplete="off">
+    <label for="cL">Player page address</label>
+    <input id="cL" type="text" autocomplete="off">
+    <div class="row" style="margin-top:12px"><button id="bSave" class="primary">Save and connect</button><button id="bCopy">Copy player link</button></div>
+    <p id="link" class="muted"></p>
+    <p class="muted">Use plain letters and digits in the passcodes. The player link contains the web app URL and the player passcode, so share it only with players.</p>
+  </div>
+</div>
+
+<script>
+'use strict';
+const $ = (id) => document.getElementById(id);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* ignore */ } },
+};
+let cfg = (() => { try { return JSON.parse(store.get('rn_host') || 'null'); } catch (e) { return null; } })() || { u: '', p: '', h: '', l: '' };
+let S = null, clockOffset = 0, connected = false;
+const samples = [];
+
+function defaultPlayerUrl() {
+  const u = new URL(location.href); u.hash = ''; u.search = '';
+  u.pathname = u.pathname.replace(/host(\.html)?$/, '');
+  if (!u.pathname.endsWith('/')) u.pathname = u.pathname.replace(/[^/]*$/, '');
+  return u.toString();
+}
+function playerLink() {
+  if (!cfg.u || !cfg.p) return '';
+  const base = (cfg.l || defaultPlayerUrl()).replace(/#.*$/, '');
+  return base + '#c=' + encodeURIComponent(btoa(JSON.stringify({ u: cfg.u, p: cfg.p })));
+}
+function fillSettings() {
+  $('cU').value = cfg.u; $('cP').value = cfg.p; $('cH').value = cfg.h; $('cL').value = cfg.l || defaultPlayerUrl();
+  $('link').textContent = playerLink();
+}
+function say(t, bad) { $('msg').textContent = t; $('msg').className = bad ? 'err' : 'okc'; }
+
+async function api(action, params, post) {
+  if (!cfg.u) throw new Error('set the web app URL first');
+  const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 30000);
+  try {
+    let res;
+    if (post) res = await fetch(cfg.u, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(Object.assign({ action, pass: cfg.p, host: cfg.h }, params || {})), signal: ctl.signal });
+    else { const u = new URL(cfg.u); u.searchParams.set('action', action); u.searchParams.set('pass', cfg.p); res = await fetch(u.toString(), { signal: ctl.signal }); }
+    const data = JSON.parse(await res.text());
+    if (!data.ok) throw new Error(data.error || 'server error');
+    return data;
+  } finally { clearTimeout(t); }
+}
+const serverTime = () => Date.now() + clockOffset;
+
+async function poll() {
+  const t0 = Date.now();
+  const r = await api('poll');
+  const t1 = Date.now();
+  samples.push({ rtt: t1 - t0, off: r.serverNow - (t0 + t1) / 2 }); if (samples.length > 8) samples.shift();
+  clockOffset = samples.slice().sort((a, b) => a.rtt - b.rtt)[0].off;
+  S = r.state; connected = true; renderRoster();
+}
+function renderRoster() {
+  if (!S) return;
+  const box = $('roster'); box.innerHTML = '';
+  S.roster.forEach((p) => {
+    const d = document.createElement('div'); d.className = 'pl' + (p.done ? ' done' : '');
+    const dot = document.createElement('span'); dot.className = 'dot';
+    const n = document.createElement('span'); n.textContent = p.name;
+    const k = document.createElement('button'); k.textContent = '×'; k.title = 'Remove ' + p.name; k.dataset.name = p.name;
+    d.appendChild(dot); d.appendChild(n); d.appendChild(k); box.appendChild(d);
+  });
+  $('noPl').hidden = S.roster.length > 0;
+  const playing = S.phase === 'playing';
+  const done = S.roster.filter((p) => p.done).length;
+  $('pCount').textContent = '(' + S.roster.length + (S.round ? ', ' + done + ' submitted' : '') + ')';
+  $('pUsed').textContent = 'Prompts used: ' + S.promptsUsed + ' of ' + S.promptsTotal;
+  $('bStart').disabled = playing || !S.roster.length;
+  $('bEnd').disabled = !playing;
+}
+function tick() {
+  if (!S) { $('stState').textContent = connected ? '' : (cfg.u ? 'Connecting…' : 'Enter settings below'); return; }
+  if (!S.round) { $('stRound').textContent = 'NO ROUND YET'; $('stPrompt').textContent = ''; $('stTimer').textContent = ''; $('stState').textContent = S.roster.length + ' player(s) waiting'; return; }
+  $('stRound').textContent = 'ROUND ' + S.round;
+  $('stPrompt').textContent = S.prompt;
+  const end = S.startedAt + S.durationSec * 1000, now = serverTime();
+  if (S.phase === 'playing' && now < end) {
+    const rem = Math.max(0, end - now) / 1000, s = Math.ceil(rem);
+    $('stTimer').textContent = Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+    $('stTimer').className = rem <= 10 ? 'low' : '';
+    $('stState').textContent = 'Writing…';
+  } else {
+    $('stTimer').textContent = '0:00'; $('stTimer').className = '';
+    const done = S.roster.filter((p) => p.done).length;
+    $('stState').textContent = 'Time. ' + done + ' of ' + S.roster.length + ' notes in.';
+  }
+}
+async function loop() {
+  for (;;) {
+    if (cfg.u && cfg.p) { try { await poll(); } catch (e) { connected = false; $('stState').textContent = 'Connection trouble: ' + e.message; } }
+    await sleep(2000);
+  }
+}
+async function act(action, params, okText) {
+  try { await api(action, params, true); say(okText || 'Done.'); await poll(); }
+  catch (e) { say(e.message, true); }
+}
+
+$('bStart').onclick = () => act('start', { durationSec: Number($('dur').value) }, 'Round started.');
+$('bEnd').onclick = () => act('end', {}, 'Round ended.');
+$('bNew').onclick = () => { if (confirm('Start a new game? This removes all players. Prompts already used stay used.')) act('newgame', {}, 'New game. Players must rejoin.'); };
+$('bResetP').onclick = () => { if (confirm('Make all prompts available again?')) act('resetprompts', {}, 'Prompts reset.'); };
+$('roster').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b && confirm('Remove ' + b.dataset.name + ' from the game?')) act('kick', { name: b.dataset.name }, b.dataset.name + ' removed.'); });
+$('bSave').onclick = () => {
+  cfg = { u: $('cU').value.trim(), p: $('cP').value, h: $('cH').value, l: $('cL').value.trim() };
+  store.set('rn_host', JSON.stringify(cfg)); $('link').textContent = playerLink();
+  S = null; poll().then(() => say('Connected.')).catch((e) => say('Could not connect: ' + e.message, true));
+};
+$('bCopy').onclick = async () => {
+  const l = playerLink(); if (!l) { say('Save settings first.', true); return; }
+  try { await navigator.clipboard.writeText(l); say('Player link copied.'); } catch (e) { say('Copy failed. Select the link text below and copy it.', true); }
+};
+
+fillSettings();
+setInterval(tick, 250);
+loop();
+</script>
+</body>
+</html>
