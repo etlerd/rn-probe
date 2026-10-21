@@ -518,7 +518,7 @@ async function pollLoop() {
   for (;;) {
     if (me && CFG && !document.hidden) {
       try { if (!joined) await doJoin(); await pollOnce(); setBanner(''); }
-      catch (e) { if (me) setBanner('Connection trouble. Retrying…'); }
+      catch (e) { if (me) setBanner('Connection trouble: ' + e.message + '. Retrying…'); }
     }
     await sleep(POLL_MS);
   }
